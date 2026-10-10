@@ -15,7 +15,9 @@ export interface ElementsMessage {
   time: number;
   count: number;
   el: Float32Array;
-  /** Objects in sunlight at the anchor time. */
+  /** Objects with a position at the anchor time (launched, and SGP4 succeeded). */
+  positioned: number;
+  /** Of those, how many are in sunlight. */
   sunlit: number;
   /** True when this answers an anchor request; false when new objects arrived. */
   anchored: boolean;

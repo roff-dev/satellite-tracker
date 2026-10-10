@@ -2,17 +2,17 @@
   import { onMount } from 'svelte';
   import { PORTFOLIO_URL } from '../site';
   import Logbook from './components/Logbook.svelte';
-  import type { CatalogStatus } from '../globe';
+  import { catalog } from './catalog.svelte';
 
   let host: HTMLDivElement;
   let visible = $state(false);
 
-  let catalog = $state<CatalogStatus | null>(null);
-
   onMount(() => {
     let dispose = () => {};
     void import('../globe').then(({ startGlobe }) => {
-      const app = startGlobe(host, (status) => (catalog = status));
+      const app = startGlobe(host, (status) => {
+        catalog.status = status;
+      });
       app.globe.onInteract(() => document.documentElement.classList.add('exploring'));
       void app.globe.ready.then(() => (visible = true));
       dispose = () => app.dispose();

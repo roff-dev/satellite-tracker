@@ -131,20 +131,22 @@ function anchorAll(time: number) {
 }
 
 /** Cylindrical shadow: behind the Earth relative to the Sun and within one Earth radius of the axis. */
-function countSunlit() {
+function countLight() {
   const { x, y, z } = sunPos(jday(new Date(anchorTime))).rsun;
   const n = Math.hypot(x, y, z);
   const sx = x / n, sy = y / n, sz = z / n;
   const day = anchorTime / DAY_MS;
   let lit = 0;
+  let positioned = 0;
   for (let slot = 0; slot < recs.length; slot++) {
     const rx = anchorPositions[slot * 3]!, ry = anchorPositions[slot * 3 + 1]!, rz = anchorPositions[slot * 3 + 2]!;
     if (Number.isNaN(rx) || objects[slot]!.launchDay > day) continue;
+    positioned++;
     const along = rx * sx + ry * sy + rz * sz;
     const cx = ry * sz - rz * sy, cy = rz * sx - rx * sz, cz = rx * sy - ry * sx;
     if (along > 0 || cx * cx + cy * cy + cz * cz > EARTH_RADIUS_KM * EARTH_RADIUS_KM) lit++;
   }
-  return lit;
+  return { positioned, sunlit: lit };
 }
 
 function emit(anchored: boolean) {
@@ -152,7 +154,7 @@ function emit(anchored: boolean) {
   while (buffer && buffer.byteLength !== master.byteLength) buffer = spare.pop();
   const el = buffer ? new Float32Array(buffer) : new Float32Array(master.length);
   el.set(master);
-  const message: ElementsMessage = { type: 'elements', time: anchorTime, count: recs.length, el, sunlit: countSunlit(), anchored };
+  const message: ElementsMessage = { type: 'elements', time: anchorTime, count: recs.length, el, ...countLight(), anchored };
   scope.postMessage(message, [el.buffer]);
 }
 

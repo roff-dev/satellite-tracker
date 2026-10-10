@@ -7,7 +7,9 @@ import { createSatellites } from './satellites';
 export interface CatalogStatus {
   /** Objects received so far. */
   count: number;
-  /** Of those, how many are in sunlight right now. */
+  /** Objects with a position right now: launched, and with a usable orbit. */
+  positioned: number;
+  /** Of those, how many are in sunlight. */
   sunlit: number;
   done: boolean;
   failed: Dataset[];
@@ -21,13 +23,13 @@ export function startGlobe(host: HTMLElement, onStatus: (status: CatalogStatus) 
   const satellites = createSatellites(reducedMotion);
   globe.inertial.add(satellites.points);
 
-  let status: CatalogStatus = { count: 0, sunlit: 0, done: false, failed: [], fetchedAt: null };
+  let status: CatalogStatus = { count: 0, positioned: 0, sunlit: 0, done: false, failed: [], fetchedAt: null };
   const update = (next: Partial<CatalogStatus>) => onStatus((status = { ...status, ...next }));
 
   const catalog = connectCatalog(clock.time, {
     onElements(message) {
       satellites.setElements(message);
-      update({ count: message.count, sunlit: message.sunlit });
+      update({ count: message.count, positioned: message.positioned, sunlit: message.sunlit });
     },
     onProgress({ count, done, failed, fetchedAt }) {
       update({ count, done, failed, fetchedAt });
