@@ -10,6 +10,9 @@ import { createFpsProbe, initialTier, settingsFor, type Tier } from './quality';
 export interface Globe {
   scene: Scene;
   inertial: Group;
+  /** Unit vector towards the Sun in scene space, updated every frame. */
+  sun: Vector3;
+  readonly pixelRatio: number;
   ready: Promise<void>;
   onInteract(fn: () => void): () => void;
   onFrame(fn: (realSeconds: number) => void): () => void;
@@ -108,7 +111,11 @@ export function createGlobe(host: HTMLElement): Globe {
   return {
     scene,
     inertial,
+    sun,
     ready,
+    get pixelRatio() {
+      return renderer.getPixelRatio();
+    },
     get tier() {
       return tier;
     },
