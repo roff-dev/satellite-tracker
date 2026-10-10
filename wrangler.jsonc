@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "overhead",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "404-page",
+    "html_handling": "auto-trailing-slash",
+    "run_worker_first": ["/api/*"]
+  },
+  // Once every two hours, off the top of the hour, as both data sources ask
+  "triggers": { "crons": ["17 */2 * * *"] },
+  // No id: created on first deploy
+  "kv_namespaces": [{ "binding": "ORBITS" }],
+  "observability": { "enabled": true }
+}
