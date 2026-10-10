@@ -1,31 +1,51 @@
-export interface Env {
-  ORBITS: KVNamespace;
+import { refresh, type RefreshEnv } from './refresh';
+
+export interface Env extends RefreshEnv {
   ASSETS: Fetcher;
 }
 
-const DATASETS = ['bright', 'payloads', 'debris', 'satcat', 'groups'] as const;
-type Dataset = (typeof DATASETS)[number];
+type Meta = { fetchedAt: string; source: string };
 
-const isDataset = (key: string): key is Dataset => (DATASETS as readonly string[]).includes(key);
+// What the browser asks for, and which stored values make it up
+const DATASETS: Record<string, string[]> = {
+  bright: ['visual', 'stations'],
+  payloads: ['payloads'],
+  debris: ['debris'],
+  satcat: ['satcat'],
+  groups: ['groups'],
+};
+const STATUS_KEYS = ['payloads', 'debris', 'visual', 'stations', 'satcat', 'groups'];
 
-async function serveDataset(env: Env, key: Dataset): Promise<Response> {
-  const { value, metadata } = await env.ORBITS.getWithMetadata<{ fetchedAt: string; source: string }>(key, 'stream');
-  if (!value) {
-    return new Response('No orbit data yet', { status: 503, headers: { 'Retry-After': '600' } });
+async function serveDataset(env: Env, parts: string[]): Promise<Response> {
+  const values = await Promise.all(parts.map((key) => env.ORBITS.getWithMetadata<Meta>(key, 'stream')));
+  const present = values.filter((v) => v.value);
+  if (!present.length) {
+    return new Response('No orbit data yet', { status: 503, headers: { 'Retry-After': '600', 'Cache-Control': 'no-store' } });
   }
-  return new Response(value, {
+  const oldest = present.map((v) => v.metadata?.fetchedAt ?? '').sort()[0] ?? '';
+  let body: ReadableStream = present[0]!.value!;
+  if (present.length > 1) {
+    // Concatenated stream by stream, never buffered or parsed
+    const { readable, writable } = new TransformStream();
+    void (async () => {
+      for (const { value } of present) await value!.pipeTo(writable, { preventClose: true });
+      await writable.close();
+    })();
+    body = readable;
+  }
+  return new Response(body, {
     headers: {
       // text/plain rather than text/csv: Cloudflare only compresses the former by default
       'Content-Type': 'text/plain; charset=utf-8',
       'Cache-Control': 'public, max-age=900, stale-while-revalidate=6300',
-      'X-Fetched-At': metadata?.fetchedAt ?? '',
-      'X-Source': metadata?.source ?? '',
+      'X-Fetched-At': oldest,
+      'X-Source': present.map((v) => v.metadata?.source).join(','),
     },
   });
 }
 
 async function serveStatus(env: Env): Promise<Response> {
-  const entries = await Promise.all(DATASETS.map((key) => env.ORBITS.get(`status:${key}`, 'json')));
+  const entries = await Promise.all(STATUS_KEYS.map((key) => env.ORBITS.get(`status:${key}`, 'json')));
   return Response.json(entries.filter(Boolean), { headers: { 'Cache-Control': 'no-store' } });
 }
 
@@ -33,8 +53,11 @@ export default {
   async fetch(request, env) {
     const path = new URL(request.url).pathname;
     if (path === '/api/status') return serveStatus(env);
-    const key = path.replace(/^\/api\//, '');
-    if (isDataset(key)) return serveDataset(env, key);
+    const parts = DATASETS[path.replace(/^\/api\//, '')];
+    if (parts) return serveDataset(env, parts);
     return env.ASSETS.fetch(request);
+  },
+  async scheduled(controller, env, ctx) {
+    ctx.waitUntil(refresh(env, new Date(controller.scheduledTime)));
   },
 } satisfies ExportedHandler<Env>;
