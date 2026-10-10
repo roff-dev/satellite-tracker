@@ -25,10 +25,18 @@ async function serveDataset(env: Env, parts: string[]): Promise<Response> {
   const oldest = present.map((v) => v.metadata?.fetchedAt ?? '').sort()[0] ?? '';
   let body: ReadableStream = present[0]!.value!;
   if (present.length > 1) {
-    // Concatenated stream by stream, never buffered or parsed
+    // Concatenated stream by stream, never buffered or parsed; a newline between parts in case one lacks it
     const { readable, writable } = new TransformStream();
     void (async () => {
-      for (const { value } of present) await value!.pipeTo(writable, { preventClose: true });
+      const newline = new TextEncoder().encode('\n');
+      for (const [i, { value }] of present.entries()) {
+        if (i) {
+          const writer = writable.getWriter();
+          await writer.write(newline);
+          writer.releaseLock();
+        }
+        await value!.pipeTo(writable, { preventClose: true });
+      }
       await writable.close();
     })();
     body = readable;

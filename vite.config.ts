@@ -17,5 +17,6 @@ export default defineConfig({
       },
     },
   },
-  server: { host: true },
+  // Orbit data comes from the Worker, run alongside with `wrangler dev`
+  server: { host: true, proxy: { '/api': 'http://localhost:8787' } },
 });
