@@ -1,0 +1,61 @@
+.page {
+  max-width: 38rem;
+  margin: 0 auto;
+  padding: calc(var(--space-8) + env(safe-area-inset-top)) var(--gutter) var(--space-16);
+}
+
+.page .back {
+  display: inline-block;
+  margin-bottom: var(--space-16);
+  font-size: var(--size-label);
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--muted);
+}
+
+.page h1 {
+  margin: 0 0 var(--space-8);
+  font: 400 var(--size-display) / 1.02 var(--font-display);
+  text-wrap: balance;
+}
+
+.page h2 {
+  margin: var(--space-12) 0 var(--space-3);
+  font: 400 var(--size-title) / 1.15 var(--font-display);
+}
+
+.page p,
+.page li {
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+.page strong {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.page .updated {
+  margin-top: var(--space-12);
+  font-family: var(--font-data);
+  font-size: var(--size-label);
+  color: var(--faint);
+}
+
+.page.lost {
+  min-height: 100svh;
+  display: grid;
+  align-content: center;
+}
+
+.page .button {
+  display: inline-block;
+  margin-top: var(--space-6);
+  padding: var(--space-3) var(--space-6);
+  border-radius: 999px;
+  background: var(--glint);
+  color: var(--void);
+  font-weight: 600;
+  text-decoration: none;
+}

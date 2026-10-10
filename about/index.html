@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>About · Overhead</title>
+    <meta name="description" content="Why I built Overhead, how it works, and where its data comes from." />
+    <meta name="theme-color" content="#05070c" />
+    <script type="module" src="/src/pages/prose.ts"></script>
+  </head>
+  <body>
+    <main class="page">
+      <a class="back" href="/">Overhead</a>
+      <h1>About Overhead</h1>
+      <p>I built Overhead because the satellite trackers I used were either beautiful or useful, rarely both, and almost none of them worked well on a phone. I wanted to see everything in orbit at once, moving where it really is, and to be able to fly in close.</p>
+
+      <h2>How it works</h2>
+      <p>Every couple of hours a small server of mine collects the latest published orbits for every tracked object. Your browser does the rest. A background thread runs the SGP4 model, the same one the published orbits are fitted to, and your graphics card moves around 32,000 objects along their orbits every frame. Nothing about you is sent anywhere to make that happen.</p>
+
+      <h2>How accurate it is</h2>
+      <p>Close to now, positions are typically within a few kilometres. The further you move the timeline from the date an orbit was measured, the less exact it gets, and the timeline shows that as it goes.</p>
+
+      <h2>Credits</h2>
+      <p>Orbital data: USSPACECOM via Space-Track.org, and CelesTrak. Earth imagery: NASA Earth Observatory (Blue Marble Next Generation, Black Marble). Land outlines: Natural Earth. Place names: GeoNames (CC BY 4.0). Stars: the HYG database (CC BY-SA 4.0). ISS model: NASA.</p>
+    </main>
+  </body>
+</html>
