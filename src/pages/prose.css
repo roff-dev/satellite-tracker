@@ -7,11 +7,9 @@
 .page .back {
   display: inline-block;
   margin-bottom: var(--space-16);
-  font-size: var(--size-label);
-  letter-spacing: 0.32em;
-  text-transform: uppercase;
+  font: italic 400 1.375rem / 1 var(--font-display);
   text-decoration: none;
-  color: var(--muted);
+  color: var(--ink);
 }
 
 .page h1 {
