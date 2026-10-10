@@ -53,7 +53,7 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
   const applyFocalOffset = (distance: number, transition: boolean) => {
     const halfHeight = distance * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
     const x = aspect > 1.2 ? -0.18 * halfHeight * aspect : 0;
-    const y = aspect < 0.8 ? 0.2 * halfHeight : 0;
+    const y = aspect < 0.8 ? -0.2 * halfHeight : 0;
     void controls.setFocalOffset(x, y, 0, transition);
   };
   let arriving = false;
