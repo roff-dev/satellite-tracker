@@ -13,6 +13,8 @@ export const view = $state<{
   launchCount: number | null;
   /** Height of the timeline along the bottom, CSS px. */
   timelineHeight: number;
+  /** The headline steps aside and the globe takes the middle, as it does the moment you touch anything. */
+  explore: () => void;
   setGroup: (slug: string | null) => void;
   setColourBy: (mode: ColourBy) => void;
   setDebrisShown: (shown: boolean) => void;
@@ -28,6 +30,7 @@ export const view = $state<{
   debrisShown: true,
   launchCount: null,
   timelineHeight: 0,
+  explore: () => document.documentElement.classList.add('exploring'),
   setGroup: () => {},
   setColourBy: () => {},
   setDebrisShown: () => {},

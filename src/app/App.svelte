@@ -12,6 +12,12 @@
   import { GROUPS } from '../data/groups';
 
   const DAY_MS = 86_400_000;
+  /** Phones, upright or on their side: the headline has the screen first, and the controls wait. */
+  const PHONE = '(max-width: 699px), (orientation: landscape) and (max-height: 500px)';
+  /** How long the headline stays once the globe has landed and the catalogue is in… */
+  const HEADLINE_MS = 2500;
+  /** …and the longest it stays after the globe appears, however slow the data is. */
+  const HEADLINE_MAX_MS = 12_000;
 
   /** A shared link can name an object (?sat=25544) and a moment (&t=2026-10-11T21:14:00Z). */
   function linkedStart() {
@@ -56,9 +62,14 @@
       selection.follow = app.follow;
       selection.stopFollowing = app.stopFollowing;
       view.search = app.search;
+      const explore = () => {
+        app.globe.explore();
+        document.documentElement.classList.add('exploring');
+      };
+      view.explore = explore;
       view.selectFound = (candidate) => {
         app.selectFound(candidate);
-        document.documentElement.classList.add('exploring');
+        explore();
       };
       view.isConstellation = app.isConstellation;
       view.setColourBy = (mode) => {
@@ -73,7 +84,7 @@
       view.setGroup = (slug) => {
         view.group = slug;
         // The chip takes the headline's place
-        if (slug) document.documentElement.classList.add('exploring');
+        if (slug) explore();
         void app.setGroup(slug).then((count) => {
           if (view.group === slug) view.groupCount = count;
         });
@@ -88,18 +99,31 @@
       const stopInsets = $effect.root(() => {
         $effect(() => app.setInsets(selection.insets.right, selection.insets.bottom + view.timelineHeight));
       });
-      app.globe.onInteract(() => document.documentElement.classList.add('exploring'));
+      app.globe.onInteract(explore);
       void app.globe.ready.then(() => (visible = true));
+      let catalogIn = () => {};
+      const loaded = new Promise<void>((resolve) => (catalogIn = resolve));
       // A shared link can also pick out a group (?group=starlink), once the catalogue is in
       const linkedGroup = new URLSearchParams(location.search).get('group');
       const stopReady = $effect.root(() => {
         $effect(() => {
           if (!catalog.status?.done || view.ready) return;
           view.ready = true;
+          catalogIn();
           if (linkedGroup && GROUPS.some((g) => g.slug === linkedGroup)) view.setGroup(linkedGroup);
         });
       });
+      // On a phone the headline steps aside by itself once there's something to look at; any key does it at once,
+      // so a keyboard can always reach the timeline
+      const timers: ReturnType<typeof setTimeout>[] = [];
+      if (matchMedia(PHONE).matches) {
+        void app.globe.ready.then(() => timers.push(setTimeout(explore, HEADLINE_MAX_MS)));
+        void Promise.all([app.globe.arrived, loaded]).then(() => timers.push(setTimeout(explore, HEADLINE_MS)));
+        addEventListener('keydown', explore, { once: true });
+      }
       dispose = () => {
+        timers.forEach(clearTimeout);
+        removeEventListener('keydown', explore);
         stopReady();
         stopInsets();
         app.dispose();

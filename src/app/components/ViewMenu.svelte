@@ -73,7 +73,7 @@
     onclick={() => {
       open = !open;
       // Reaching for the controls counts as exploring: the headline steps aside
-      document.documentElement.classList.add('exploring');
+      view.explore();
     }}
   >
     <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 3l9 5-9 5-9-5z" /><path fill="currentColor" d="M3 12.2l2.4-1.3L12 14.6l6.6-3.7 2.4 1.3-9 5z" opacity="0.7" /><path fill="currentColor" d="M3 16.2l2.4-1.3L12 18.6l6.6-3.7 2.4 1.3-9 5z" opacity="0.45" /></svg>

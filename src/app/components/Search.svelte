@@ -103,7 +103,7 @@
         onkeydown={onKey}
         onfocus={() => {
           open = true;
-          document.documentElement.classList.add('exploring');
+          view.explore();
         }}
         onblur={() => setTimeout(() => ((open = false), compact && !query && (expanded = false)), 150)}
         type="search"

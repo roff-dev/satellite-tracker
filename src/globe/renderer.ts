@@ -30,6 +30,10 @@ export interface Globe {
   readonly glowScale: number;
   readonly quality: QualitySettings;
   ready: Promise<void>;
+  /** Settles once the opening flight has come to rest. */
+  arrived: Promise<void>;
+  /** Centres the globe in the space the panels leave, as touching it does, but keeps the idle turn going. */
+  explore(): void;
   onInteract(fn: () => void): () => void;
   /** Screen space covered by panels (CSS px), so the globe can centre itself in the rest. */
   setInsets(right: number, bottom: number): void;
@@ -187,6 +191,8 @@ export function createGlobe(host: HTMLElement): Globe {
     get tier() {
       return tier;
     },
+    arrived: view.arrived,
+    explore: view.explore,
     onInteract: view.onInteract,
     setInsets: view.setInsets,
     onFrame(fn) {

@@ -287,6 +287,18 @@
     grid-template-columns: 1fr auto;
     gap: var(--space-2) var(--space-4);
     pointer-events: none;
+    transition:
+      opacity 0.5s ease,
+      translate 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+
+  /* Phones: the headline has the screen first; the timeline arrives as it steps aside */
+  @media (max-width: 699px), (orientation: landscape) and (max-height: 500px) {
+    :global(html:not(.exploring)) .timeline {
+      visibility: hidden;
+      opacity: 0;
+      translate: 0 0.75rem;
+    }
   }
 
   .timeline > * {

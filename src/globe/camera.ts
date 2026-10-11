@@ -39,7 +39,10 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
   controls.touches.two = CameraControls.ACTION.TOUCH_DOLLY;
   controls.touches.three = CameraControls.ACTION.NONE;
 
+  /** Touched, dragged or keyed: the idle turn stops for good. */
   let interacted = false;
+  /** The headline has stepped aside, so the globe centres in the free space; on phones this also happens by itself. */
+  let exploring = false;
   let rest = 3.6;
   let aspect = 1;
   let shortScreen = false;
@@ -58,7 +61,7 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
   // Leave room for the headline: portrait screens push the globe down, wide screens push it right
   const applyFocalOffset = (distance: number, transition: boolean) => {
     const halfHeight = distance * Math.tan(MathUtils.degToRad(camera.fov) / 2);
-    if (interacted) {
+    if (exploring) {
       // Exploring: centre the globe in the space the panels and timeline leave
       const perPixel = (2 * halfHeight) / viewHeight;
       void controls.setFocalOffset((insets.right / 2) * perPixel, (insets.bottom / 2) * perPixel, 0, transition);
@@ -75,12 +78,19 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
   let suspended = false;
   const NEAR = camera.near;
   const listeners = new Set<() => void>();
+  let landed = () => {};
+  const arrived = new Promise<void>((resolve) => (landed = resolve));
+  const explore = () => {
+    if (exploring) return;
+    exploring = true;
+    // The headline steps aside, so the globe can take the middle
+    applyFocalOffset(rest, !reducedMotion);
+  };
   const markInteracted = () => {
     if (interacted) return;
     interacted = true;
     controls.smoothTime = RESTING_SMOOTH_TIME;
-    // The headline steps aside, so the globe can take the middle
-    applyFocalOffset(rest, true);
+    explore();
     listeners.forEach((fn) => fn());
   };
   controls.addEventListener('controlstart', markInteracted);
@@ -105,6 +115,9 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
       listeners.add(fn);
       return () => listeners.delete(fn);
     },
+    explore,
+    /** Settles once the opening flight has come to rest. */
+    arrived,
     /** Places the camera far out over the given longitude, then glides in. */
     arrive(lonDeg: number, gmst: number) {
       rest = restDistance();
@@ -112,6 +125,7 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
       applyFocalOffset(rest, false);
       if (reducedMotion) {
         void controls.setLookAt(end.x, end.y, end.z, 0, 0, 0, false);
+        landed();
         return;
       }
       surfaceDirection(34, lonDeg - 50, gmst, tmp).multiplyScalar(ARRIVAL_FROM);
@@ -121,6 +135,7 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
       void controls.setLookAt(end.x, end.y, end.z, 0, 0, 0, true).then(() => {
         arriving = false;
         if (!interacted) controls.smoothTime = RESTING_SMOOTH_TIME;
+        landed();
       });
     },
     /** Keeps the view fixed to the ground by turning with the Earth. */
