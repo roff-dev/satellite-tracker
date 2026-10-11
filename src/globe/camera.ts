@@ -48,8 +48,8 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
   let shortScreen = false;
   let portraitDrop = 0.2;
   let viewHeight = 1;
-  /** Screen space a panel covers, CSS px: the globe centres itself in what's left. */
-  let insets = { right: 0, bottom: 0 };
+  /** Screen space the controls and panels cover, CSS px: the globe centres itself in what's left. */
+  let insets = { right: 0, bottom: 0, top: 0 };
 
   /** Distance at which the globe fills FILL of the narrower screen dimension. */
   const restDistance = () => {
@@ -64,7 +64,7 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
     if (exploring) {
       // Exploring: centre the globe in the space the panels and timeline leave
       const perPixel = (2 * halfHeight) / viewHeight;
-      void controls.setFocalOffset((insets.right / 2) * perPixel, (insets.bottom / 2) * perPixel, 0, transition);
+      void controls.setFocalOffset((insets.right / 2) * perPixel, ((insets.bottom - insets.top) / 2) * perPixel, 0, transition);
       return;
     }
     // A phone on its side has the headline beside the globe, so the globe moves further over
@@ -209,10 +209,10 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
     get restDistance() {
       return rest;
     },
-    /** Panels covering the right or bottom of the screen (CSS px); 0 for none. The globe glides to the free space. */
-    setInsets(right: number, bottom: number) {
-      if (right === insets.right && bottom === insets.bottom) return;
-      insets = { right, bottom };
+    /** Controls and panels covering the right, bottom or top of the screen (CSS px). The globe glides to the free space. */
+    setInsets(right: number, bottom: number, top = 0) {
+      if (right === insets.right && bottom === insets.bottom && top === insets.top) return;
+      insets = { right, bottom, top };
       // The framing offset is independent of where the camera is, so it can change mid-arrival too
       applyFocalOffset(rest, true);
     },

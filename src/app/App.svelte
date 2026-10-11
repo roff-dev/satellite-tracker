@@ -8,12 +8,10 @@
   import TopBar from './components/TopBar.svelte';
   import Timeline from './components/Timeline.svelte';
   import { clock, EXTENDED_DAYS, STANDARD_DAYS } from '../time/clock';
-  import { view } from './view.svelte';
+  import { PHONE, view } from './view.svelte';
   import { GROUPS } from '../data/groups';
 
   const DAY_MS = 86_400_000;
-  /** Phones, upright or on their side: the headline has the screen first, and the controls wait. */
-  const PHONE = '(max-width: 699px), (orientation: landscape) and (max-height: 500px)';
   /** How long the headline stays once the globe has landed and the catalogue is in… */
   const HEADLINE_MS = 2500;
   /** …and the longest it stays after the globe appears, however slow the data is. */
@@ -97,7 +95,7 @@
       };
       // Created after the async import, so it needs its own root, cleaned up with the globe
       const stopInsets = $effect.root(() => {
-        $effect(() => app.setInsets(selection.insets.right, selection.insets.bottom + view.timelineHeight));
+        $effect(() => app.setInsets(selection.insets.right, selection.insets.bottom + view.timelineHeight, view.topInset));
       });
       app.globe.onInteract(explore);
       void app.globe.ready.then(() => (visible = true));

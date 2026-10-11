@@ -35,8 +35,8 @@ export interface Globe {
   /** Centres the globe in the space the panels leave, as touching it does, but keeps the idle turn going. */
   explore(): void;
   onInteract(fn: () => void): () => void;
-  /** Screen space covered by panels (CSS px), so the globe can centre itself in the rest. */
-  setInsets(right: number, bottom: number): void;
+  /** Screen space covered by panels and controls (CSS px), so the globe can centre itself in the rest. */
+  setInsets(right: number, bottom: number, top?: number): void;
   onFrame(fn: (realSeconds: number) => void): () => void;
   readonly tier: Tier;
   dispose(): void;

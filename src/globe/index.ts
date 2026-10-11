@@ -274,10 +274,8 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
     showLaunch,
     /** Whether a name belongs to a constellation whose launches can be shown. */
     isConstellation: (name: string) => CONSTELLATIONS.some(([prefix]) => name.startsWith(prefix)),
-    /** Screen space covered by the object panel, so the globe can sit beside it. */
-    setInsets(right: number, bottom: number) {
-      globe.setInsets(right, bottom);
-    },
+    /** Screen space covered by the panel, timeline and top controls, so the globe can sit in what's left. */
+    setInsets: globe.setInsets,
     dispose() {
       clearTimeout(retryTimer);
       clearInterval(describeTimer);

@@ -1,6 +1,9 @@
 import type { ColourBy } from '../data/groups';
 import type { Candidate, SearchResult } from '../data/protocol';
 
+/** Phones, upright or on their side: the headline comes first, and the controls run across the top. */
+export const PHONE = '(max-width: 699px), (orientation: landscape) and (max-height: 500px)';
+
 /** How the globe is being shown, and the actions that change it. Filled in once the globe has loaded. */
 export const view = $state<{
   ready: boolean;
@@ -14,6 +17,8 @@ export const view = $state<{
   launchCount: number | null;
   /** Height of the timeline along the bottom, CSS px. */
   timelineHeight: number;
+  /** On phones, how far down the controls along the top reach, CSS px; 0 elsewhere. */
+  topInset: number;
   /** The headline steps aside and the globe takes the middle, as it does the moment you touch anything. */
   explore: () => void;
   setGroup: (slug: string | null) => void;
@@ -31,6 +36,7 @@ export const view = $state<{
   kinds: 0b1111,
   launchCount: null,
   timelineHeight: 0,
+  topInset: 0,
   explore: () => document.documentElement.classList.add('exploring'),
   setGroup: () => {},
   setColourBy: () => {},
