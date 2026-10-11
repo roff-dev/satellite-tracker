@@ -145,7 +145,7 @@ export function createGlobe(host: HTMLElement): Globe {
     probe.frame(performance.now());
   }
 
-  if (import.meta.env.DEV) Object.assign(window, { __overhead: { view, renderer, scene, applyTier } });
+  if (import.meta.env.DEV) Object.assign(window, { __overhead: { view, renderer, scene, applyTier, clock } });
 
   // Shaders link in the background where the driver allows it, so the page stays responsive meanwhile
   const ready = earth.ready.then(async () => {

@@ -20,7 +20,7 @@
     position: fixed;
     z-index: 3;
     left: 50%;
-    bottom: calc(var(--space-12) + env(safe-area-inset-bottom));
+    bottom: calc(var(--timeline, 0px) + var(--space-6) + env(safe-area-inset-bottom));
     translate: -50% 0;
     display: flex;
     align-items: center;

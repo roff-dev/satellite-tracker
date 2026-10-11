@@ -1,13 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { PROFILE_URL } from '../site';
-  import Logbook from './components/Logbook.svelte';
   import { catalog } from './catalog.svelte';
   import { selection } from './selection.svelte';
   import ObjectPanel from './components/ObjectPanel.svelte';
   import HoverLabel from './components/HoverLabel.svelte';
   import FollowBar from './components/FollowBar.svelte';
   import TopBar from './components/TopBar.svelte';
+  import Timeline from './components/Timeline.svelte';
+  import { clock, EXTENDED_DAYS, STANDARD_DAYS } from '../time/clock';
   import { view } from './view.svelte';
   import { GROUPS } from '../data/groups';
 
@@ -18,6 +18,8 @@
     const params = new URLSearchParams(location.search);
     const norad = Number(params.get('sat'));
     const time = Date.parse(params.get('t') ?? '');
+    // A moment more than a week away needs the wider timeline
+    if (Number.isFinite(time) && Math.abs(time - Date.now()) > STANDARD_DAYS * DAY_MS) clock.setReach(EXTENDED_DAYS);
     return {
       norad: Number.isInteger(norad) && norad > 0 ? norad : undefined,
       // The timeline reaches 90 days either way; anything further out is ignored
@@ -84,7 +86,7 @@
       };
       // Created after the async import, so it needs its own root, cleaned up with the globe
       const stopInsets = $effect.root(() => {
-        $effect(() => app.setInsets(selection.insets.right, selection.insets.bottom));
+        $effect(() => app.setInsets(selection.insets.right, selection.insets.bottom + view.timelineHeight));
       });
       app.globe.onInteract(() => document.documentElement.classList.add('exploring'));
       void app.globe.ready.then(() => (visible = true));
@@ -111,15 +113,12 @@
 <TopBar />
 <div class="globe" class:visible bind:this={host}></div>
 
-<Logbook />
+<Timeline />
 
 <ObjectPanel />
 <FollowBar />
 <HoverLabel />
 
-<footer class="byline">
-  Made by <a href={PROFILE_URL}>Kieron</a>
-</footer>
 
 <style>
   .globe {
@@ -141,29 +140,4 @@
     touch-action: none;
   }
 
-  .byline {
-    position: fixed;
-    z-index: 2;
-    right: var(--gutter);
-    bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
-    font-size: var(--size-label);
-    color: var(--faint);
-  }
-
-  .byline a {
-    color: var(--muted);
-    text-decoration: underline;
-    text-decoration-thickness: 1px;
-    text-underline-offset: 0.2em;
-    text-decoration-color: var(--line);
-    /* A comfortable tap target without moving the line */
-    padding: 0.875rem 0.375rem;
-    margin: -0.875rem -0.375rem;
-    transition: color 0.2s, text-decoration-color 0.2s;
-  }
-
-  .byline a:hover {
-    color: var(--ink);
-    text-decoration-color: currentColor;
-  }
 </style>

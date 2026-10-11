@@ -58,8 +58,8 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
   // Leave room for the headline: portrait screens push the globe down, wide screens push it right
   const applyFocalOffset = (distance: number, transition: boolean) => {
     const halfHeight = distance * Math.tan(MathUtils.degToRad(camera.fov) / 2);
-    if (insets.right || insets.bottom) {
-      // An open panel: centre the globe in the space beside or above it
+    if (interacted) {
+      // Exploring: centre the globe in the space the panels and timeline leave
       const perPixel = (2 * halfHeight) / viewHeight;
       void controls.setFocalOffset((insets.right / 2) * perPixel, (insets.bottom / 2) * perPixel, 0, transition);
       return;
@@ -79,6 +79,8 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
     if (interacted) return;
     interacted = true;
     controls.smoothTime = RESTING_SMOOTH_TIME;
+    // The headline steps aside, so the globe can take the middle
+    applyFocalOffset(rest, true);
     listeners.forEach((fn) => fn());
   };
   controls.addEventListener('controlstart', markInteracted);

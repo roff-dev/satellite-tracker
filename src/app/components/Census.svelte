@@ -21,14 +21,6 @@
   });
   const secondsLeft = $derived(status?.retryAt ? Math.max(0, Math.ceil((status.retryAt - now) / 1000)) : null);
 
-  const relative = new Intl.RelativeTimeFormat('en-GB', { numeric: 'auto' });
-  /** "3 days ago", "5 hours ago", "yesterday": how old the snapshot is. */
-  function age(iso: string) {
-    const minutes = (Date.now() - Date.parse(iso)) / 60_000;
-    if (minutes < 90) return relative.format(-Math.max(1, Math.round(minutes)), 'minute');
-    if (minutes < 36 * 60) return relative.format(-Math.round(minutes / 60), 'hour');
-    return relative.format(-Math.round(minutes / 1440), 'day');
-  }
 </script>
 
 {#if status?.unreachable}
@@ -54,26 +46,18 @@
       <span class="clause"><span class="figure shade">{number.format(status.positioned - status.sunlit)}</span> in Earth’s shadow.</span>
     {/if}
   </p>
-  {#if status.done && status.stale}
-    <p class="stale">
-      Live orbit data is unavailable, so you’re seeing {#if status.fetchedAt}data from <strong>{age(status.fetchedAt)}</strong>{:else}an earlier copy{/if}.
-      Positions are approximate.
-    </p>
-  {/if}
 {/if}
 
 <style>
   /* Panels are facet-cut, flat --deck with a lit --raise facet in the upper-left corner */
-  .unreachable,
-  .stale {
+  .unreachable {
     position: relative;
     isolation: isolate;
     max-width: 26rem;
     pointer-events: auto;
   }
 
-  .unreachable::before,
-  .stale::before {
+  .unreachable::before {
     content: '';
     position: absolute;
     inset: 0;
@@ -110,20 +94,6 @@
   .when {
     font-size: var(--size-label);
     color: var(--faint);
-  }
-
-  .stale {
-    margin: var(--space-3) 0 0;
-    padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
-    font-size: var(--size-label);
-    line-height: 1.45;
-    color: var(--muted);
-  }
-
-  .stale strong {
-    color: var(--ink);
-    font-weight: 600;
-    white-space: nowrap;
   }
 
   .census {

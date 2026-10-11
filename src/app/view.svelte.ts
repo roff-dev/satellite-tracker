@@ -11,6 +11,8 @@ export const view = $state<{
   debrisShown: boolean;
   /** Objects from the selected satellite's launch, while they're shown. */
   launchCount: number | null;
+  /** Height of the timeline along the bottom, CSS px. */
+  timelineHeight: number;
   setGroup: (slug: string | null) => void;
   setColourBy: (mode: ColourBy) => void;
   setDebrisShown: (shown: boolean) => void;
@@ -25,6 +27,7 @@ export const view = $state<{
   colourBy: 'light',
   debrisShown: true,
   launchCount: null,
+  timelineHeight: 0,
   setGroup: () => {},
   setColourBy: () => {},
   setDebrisShown: () => {},

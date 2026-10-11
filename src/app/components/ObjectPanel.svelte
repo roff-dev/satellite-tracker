@@ -121,6 +121,13 @@
     void height.set(target, { instant: reducedMotion || dragging });
   });
 
+  $effect(() => {
+    selection.sheetOpen = !!selected && sheet && !selection.following;
+  });
+  $effect(() => {
+    document.documentElement.style.setProperty('--sheet', selected && sheet && !selection.following ? `${height.current}px` : '0px');
+  });
+
   // Tell the globe how much of the screen the panel takes, so it can move into the space that's left.
   // A full-height sheet leaves nothing worth framing, so the globe stays where it was at half.
   let panel = $state<HTMLElement>();
@@ -296,7 +303,7 @@
     display: flex;
     flex-direction: column;
     width: min(380px, calc(100vw - 2 * var(--gutter)));
-    max-height: calc(100svh - 44px - 3 * var(--space-6) - 4rem);
+    max-height: calc(100svh - 44px - 3 * var(--space-6) - var(--timeline, 7rem));
     padding: var(--space-6) var(--space-6) 0;
     isolation: isolate;
     background: linear-gradient(155deg, var(--raise) 0 18%, var(--deck) 18% 100%);
