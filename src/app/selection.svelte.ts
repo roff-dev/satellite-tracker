@@ -8,12 +8,12 @@ export const selection = $state<{
   hover: Hover | null;
   /** Name of the object the camera is riding with. */
   following: string | null;
-  /** The phone's bottom sheet is raised past its lowest step, so the timeline docks to a single row. */
-  sheetDocked: boolean;
+  /** The bottom sheet is open: the timeline docks to one row, and the group chip and kinds step aside. */
+  sheetOpen: boolean;
   choose: (index: number) => void;
   close: () => void;
   follow: () => void;
   stopFollowing: () => void;
   /** Screen space the panel covers when at rest, CSS px. */
   insets: { right: number; bottom: number };
-}>({ current: null, described: null, hover: null, following: null, sheetDocked: false, choose: () => {}, close: () => {}, follow: () => {}, stopFollowing: () => {}, insets: { right: 0, bottom: 0 } });
+}>({ current: null, described: null, hover: null, following: null, sheetOpen: false, choose: () => {}, close: () => {}, follow: () => {}, stopFollowing: () => {}, insets: { right: 0, bottom: 0 } });

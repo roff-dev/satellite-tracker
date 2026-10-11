@@ -6,7 +6,6 @@
   import { accuracyGrade, type Grade, type OrbitClass } from '../../orbit/describe';
   import { view } from '../view.svelte';
   import { loadNames, names as shared } from '../names.svelte';
-  import { backToNow } from '../now';
 
   const KIND = { payload: 'Satellite', rocket: 'Rocket body', debris: 'Debris' } as const;
   const CLASS: Record<OrbitClass, string> = {
@@ -92,13 +91,21 @@
     setTimeout(() => (copied = false), 2000);
   }
 
-  // On a phone held upright the panel is a bottom sheet with three resting heights
+  // On a phone held upright the panel is a bottom sheet with three resting heights. It opens at the lowest, just
+  // tall enough for the header, so the object and its path stay in view; at its tallest it leaves the top bar and
+  // the docked timeline row above it clear
   type Detent = 'peek' | 'half' | 'full';
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   let sheet = $state(false);
   let viewport = $state(800);
-  let detent = $state<Detent>('half');
-  const heights = $derived({ peek: 88, half: Math.round(viewport * 0.5), full: Math.round(viewport * 0.92) });
+  let detent = $state<Detent>('peek');
+  let headerHeight = $state(96);
+  let safeBottom = $state(0);
+  const heights = $derived({
+    peek: Math.round(headerHeight + safeBottom) + 26,
+    half: Math.round(viewport * 0.5),
+    full: Math.round(viewport - Math.max(view.topInset, 72) - view.timelineHeight - 20),
+  });
   const height = new Spring(0, { stiffness: 0.15, damping: 0.8 });
 
   onMount(() => {
@@ -127,11 +134,11 @@
     shownFor = norad;
   });
 
-  // A new selection opens the sheet halfway; swapping between nearby objects keeps its height
+  // A new selection opens the sheet at its lowest; swapping between nearby objects keeps its height
   let wasOpen = false;
   $effect(() => {
     const open = !!selected;
-    if (open && !wasOpen) detent = 'half';
+    if (open && !wasOpen) detent = 'peek';
     if (open) loadNames();
     wasOpen = open;
   });
@@ -154,9 +161,8 @@
     }
   });
 
-  // At its lowest step the sheet leaves room for the whole timeline; above that the timeline docks to one row
   $effect(() => {
-    selection.sheetDocked = !!selected && sheet && !selection.following && detent !== 'peek';
+    selection.sheetOpen = !!selected && sheet && !selection.following;
   });
   $effect(() => {
     document.documentElement.style.setProperty('--sheet', selected && sheet && !selection.following ? `${height.current}px` : '0px');
@@ -286,14 +292,14 @@
 
 {#if selected && !selection.following}
   <aside bind:this={panel} class="panel" class:sheet style:height={sheet ? `${height.current}px` : undefined} aria-labelledby="object-name">
-    <header role="group" onpointerdown={onDragStart} onpointermove={onDragMove} onpointerup={onDragEnd} onpointercancel={onDragEnd}>
+    <header role="group" bind:offsetHeight={headerHeight} onpointerdown={onDragStart} onpointermove={onDragMove} onpointerup={onDragEnd} onpointercancel={onDragEnd}>
       {#if sheet}
         <!-- Dragging the header moves the sheet; the grip does the same from a keyboard -->
         <button
           class="grip"
           type="button"
           aria-label={detent === 'full' ? 'Show less' : 'Show more'}
-          onclick={() => (detent = detent === 'full' ? 'half' : 'full')}
+          onclick={() => (detent = detent === 'half' ? 'full' : 'half')}
           onpointerdown={(e) => e.stopPropagation()}
         ></button>
       {/if}
@@ -325,10 +331,7 @@
           {#if Math.abs(offset) < 30_000}
             <h3 id="now-title">Right now</h3>
           {:else}
-            <div class="when">
-              <h3 id="now-title"><span class="away">{fromNow(offset)}</span> {moment.format(shownAt)}</h3>
-              <button class="chip back" type="button" onclick={backToNow}>Now</button>
-            </div>
+            <h3 id="now-title"><span class="away">{fromNow(offset)}</span> {moment.format(shownAt)}</h3>
           {/if}
           {#if now}
             <dl>
@@ -407,6 +410,8 @@
       {/if}
     </div>
     <p class="visually-hidden" aria-live="polite">{announcement}{copied ? '. Link copied.' : ''}</p>
+    <!-- How much of the screen's foot the home indicator takes, so the lowest sheet clears it -->
+    <span class="safe-probe" bind:clientHeight={safeBottom} aria-hidden="true"></span>
   </aside>
 {/if}
 
@@ -553,16 +558,7 @@
   }
 
   /* Away from now, the heading names the moment, its distance from now in amber as on the timeline */
-  .when {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-    margin: calc(-1 * var(--space-2)) 0 var(--space-3);
-  }
-
-  .when h3 {
-    margin: 0;
+  #now-title {
     font-variant-numeric: tabular-nums;
   }
 
@@ -570,9 +566,13 @@
     color: var(--glint);
   }
 
-  .back {
-    flex: none;
-    font-size: var(--size-label);
+  .safe-probe {
+    position: fixed;
+    bottom: 0;
+    width: 0;
+    height: env(safe-area-inset-bottom);
+    visibility: hidden;
+    pointer-events: none;
   }
 
   p {

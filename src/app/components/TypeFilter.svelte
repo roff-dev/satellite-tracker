@@ -20,7 +20,7 @@
 </script>
 
 <!-- The marks are the colour key when colouring by type, so switching a kind off and reading the key are one thing -->
-<fieldset class="types" class:keyed={view.colourBy === 'type'} class:tucked={selection.sheetDocked} disabled={!view.ready}>
+<fieldset class="types" class:keyed={view.colourBy === 'type'} class:tucked={selection.sheetOpen} disabled={!view.ready}>
   <legend class="visually-hidden">Show</legend>
   {#each KINDS as { kind, label, short, colour } (kind)}
     {@const on = (view.kinds & (1 << kind)) !== 0}
@@ -69,7 +69,7 @@
     color: var(--ink);
   }
 
-  /* A raised sheet means attention is on one object; the list steps out of the globe's way, as the timeline does */
+  /* An open sheet means attention is on one object; the kinds step out of the globe's way, as the timeline does */
   .tucked {
     display: none;
   }
@@ -150,10 +150,6 @@
       overflow-x: auto;
       scrollbar-width: none;
       transition: opacity 0.5s ease;
-    }
-
-    .tucked {
-      display: flex;
     }
 
     .types::-webkit-scrollbar {

@@ -203,7 +203,7 @@
   </button>
 {/snippet}
 
-<section bind:this={bar} class="timeline" class:docked={selection.sheetDocked} aria-label="Time">
+<section bind:this={bar} class="timeline" class:docked={selection.sheetOpen} aria-label="Time">
   {#if beyondWeek && status?.done}
     <p class="notice illustrative">
       Beyond a week, positions are illustrative.
@@ -547,18 +547,29 @@
     }
   }
 
-  /* Above a raised bottom sheet: one row of play, the ribbon and speed, so the globe keeps its room.
-     The panel heading says which moment is shown and offers the way back to now */
+  /* Above an open bottom sheet: one row of play, the ribbon, speed and (away from now) Now, so the globe keeps its
+     room. The panel heading says which moment is shown */
   .docked .notice,
   .docked .readout,
-  .docked .ends,
+  .docked .reach,
   .docked .byline,
-  .docked .other {
+  .docked .other,
+  .docked .ends:not(:has(.now)) {
     display: none;
   }
 
   .docked .controls {
     flex-wrap: nowrap;
+    gap: var(--space-2);
+  }
+
+  .docked .ends {
+    order: 2;
+    margin-left: 0;
+  }
+
+  .docked .now {
+    margin-left: 0;
   }
 
   .docked .playback {
