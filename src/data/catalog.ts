@@ -6,6 +6,11 @@ type Question = Extract<CatalogRequest, { id: number }> extends infer R ? (R ext
 
 /** How far (sim ms) the drawn orbits may drift from their anchor before the worker re-anchors them. */
 const ANCHOR_SPAN = 60_000;
+/**
+ * At least this long (real ms) between re-anchors. While scrubbing, the shader carries the orbits between
+ * anchors to within a few km, so a fresh 2 MB upload every frame would buy nothing but dropped frames.
+ */
+const ANCHOR_GAP_MS = 66;
 
 export interface CatalogHandlers {
   onElements(message: ElementsMessage): void;
@@ -24,6 +29,8 @@ export function connectCatalog(startTime: number, handlers: CatalogHandlers) {
   let anchorTime = startTime;
   let inFlight = false;
   let wanted: number | null = null;
+  let lastSent = -Infinity;
+  let waiting: ReturnType<typeof setTimeout> | undefined;
   let shown: Float32Array | null = null;
   let requestId = 0;
   const replies = new Map<number, (reply: Reply) => void>();
@@ -35,12 +42,24 @@ export function connectCatalog(startTime: number, handlers: CatalogHandlers) {
   }
 
   function anchor(time: number) {
-    if (inFlight) {
+    const early = lastSent + ANCHOR_GAP_MS - performance.now();
+    if (inFlight || early > 0) {
       wanted = time;
+      if (!inFlight && early > 0) waiting ??= setTimeout(followUp, early);
       return;
     }
     inFlight = true;
+    lastSent = performance.now();
     send({ type: 'anchor', time });
+  }
+
+  /** The latest time asked for while busy, if it's still worth anchoring at. */
+  function followUp() {
+    waiting = undefined;
+    if (wanted === null) return;
+    const next = wanted;
+    wanted = null;
+    if (Math.abs(next - anchorTime) > 1000) anchor(next);
   }
 
   worker.onmessage = ({ data }: MessageEvent<CatalogEvent>) => {
@@ -58,11 +77,7 @@ export function connectCatalog(startTime: number, handlers: CatalogHandlers) {
     if (previous && previous.buffer.byteLength) send({ type: 'recycle', buffer: previous.buffer as ArrayBuffer }, [previous.buffer]);
     if (!data.anchored) return;
     inFlight = false;
-    if (wanted !== null) {
-      const next = wanted;
-      wanted = null;
-      if (Math.abs(next - anchorTime) > 1000) anchor(next);
-    }
+    followUp();
   };
 
   anchor(startTime);
@@ -107,6 +122,7 @@ export function connectCatalog(startTime: number, handlers: CatalogHandlers) {
       send({ type: 'retry' });
     },
     dispose() {
+      clearTimeout(waiting);
       worker.terminate();
     },
   };
