@@ -42,6 +42,27 @@
   transform: translateY(-0.5rem);
 }
 
+/* A phone on its side: type sized by height, kept to the left of the globe */
+@media (orientation: landscape) and (max-height: 500px) {
+  .hero {
+    max-width: 44vw;
+    padding-top: calc(var(--space-4) + env(safe-area-inset-top));
+  }
+
+  .wordmark {
+    margin-bottom: var(--space-6);
+  }
+
+  .hero h1 {
+    font-size: clamp(1.75rem, 10vh, 2.75rem);
+  }
+
+  .hero .sub {
+    margin-top: var(--space-3);
+    font-size: 0.9375rem;
+  }
+}
+
 /* On tall screens the headline sits over the top of the globe; keep it legible */
 @media (max-aspect-ratio: 4/5) {
   .hero::before {
