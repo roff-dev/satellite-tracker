@@ -102,8 +102,9 @@ export function createGlobe(host: HTMLElement): Globe {
 
   if (import.meta.env.DEV) Object.assign(window, { __overhead: { view, renderer, scene } });
 
-  const ready = earth.ready.then(() => {
-    renderer.compile(scene, view.camera);
+  // Shaders link in the background where the driver allows it, so the page stays responsive meanwhile
+  const ready = earth.ready.then(async () => {
+    await renderer.compileAsync(scene, view.camera);
     view.arrive(timezoneLongitude(), gmst(clock.time));
     requestAnimationFrame(frame);
   });
