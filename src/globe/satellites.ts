@@ -12,6 +12,7 @@ import {
   Vector3,
 } from 'three';
 import { STRIDE } from '../orbit/elements';
+import { GLOW_LAYER } from './glow';
 import type { ElementsMessage } from '../data/protocol';
 
 const vertexShader = /* glsl */ `
@@ -77,18 +78,24 @@ const vertexShader = /* glsl */ `
     float size = kind <= 1 ? 2.5 : kind == 2 ? 3.0 : 1.5;
     float opacity = kind == 1 ? 0.6 : 1.0;
 
-    // Glint runs 0.35 to 3; compressed so the brightest stay amber rather than clipping to white
+    // Glint runs 0.35 to 8. On screen it saturates at 3, compressed so the brightest stay amber rather than
+    // clipping to white; the range above 3 only picks out the truly bright objects that glow
     float strength = mix(0.35, 1.1, smoothstep(0.35, 3.0, glint));
     vec3 sunlit = base * strength * (0.3 + 0.7 * phase);
-    vColour = mix(uShadow * 0.25, sunlit, lit) * opacity;
-    size *= mix(1.0, 0.85 + 0.15 * glint, lit);
+    size *= mix(1.0, 0.85 + 0.15 * min(glint, 3.0), lit);
 
     // The loading wave: objects appear as it passes outward through their shell, briefly bright at its crest
     float radius = length(r);
     float shown = smoothstep(uReveal, uReveal - 250.0, radius);
     float crest = 1.0 + 1.5 * shown * (1.0 - smoothstep(0.0, 1200.0, uReveal - radius));
     if (float(gl_VertexID) >= uFresh.x) shown *= uFresh.y;
-    vColour *= shown * crest;
+
+    #ifdef GLOW
+      // Only the bright and sunlit spill into a halo, in their own colour
+      vColour = sunlit * lit * opacity * shown * crest * smoothstep(4.0, 8.0, glint);
+    #else
+      vColour = mix(uShadow * 0.25, sunlit, lit) * opacity * shown * crest;
+    #endif
 
     gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
     gl_PointSize = size * uPixelRatio;
@@ -154,6 +161,15 @@ export function createSatellites(reducedMotion: boolean) {
   const points = new Points(geometry, material);
   points.frustumCulled = false;
   points.renderOrder = 2;
+  // The same orbits again, drawn only into the glow buffer
+  const glowMaterial = material.clone();
+  // Shares every uniform except point size, which follows the glow buffer's lower resolution
+  const glowPixelRatio = { value: 1 };
+  glowMaterial.uniforms = { ...uniforms, uPixelRatio: glowPixelRatio };
+  glowMaterial.defines = { GLOW: '' };
+  const glowPoints = new Points(geometry, glowMaterial);
+  glowPoints.frustumCulled = false;
+  glowPoints.layers.set(GLOW_LAYER);
 
   let anchorTime = 0;
   let count = 0;
@@ -171,10 +187,12 @@ export function createSatellites(reducedMotion: boolean) {
     geometry.setAttribute('aQ', new InterleavedBufferAttribute(buffer, 4, 8));
     geometry.setAttribute('aX', new InterleavedBufferAttribute(buffer, 4, 12));
     points.geometry = geometry;
+    glowPoints.geometry = geometry;
   }
 
   return {
     points,
+    glowPoints,
     setElements({ el, count: next, time }: ElementsMessage) {
       const attribute = geometry.getAttribute('position') as InterleavedBufferAttribute | undefined;
       if (attribute && attribute.data.array.length === el.length) {
@@ -194,11 +212,12 @@ export function createSatellites(reducedMotion: boolean) {
     start() {
       started = true;
     },
-    update(time: number, sun: Vector3, pixelRatio: number) {
+    update(time: number, sun: Vector3, pixelRatio: number, glowScale: number) {
       uniforms.uDt.value = (time - anchorTime) / 1000;
       uniforms.uDay.value = time / DAY_MS;
       uniforms.uSun.value.copy(sun);
       uniforms.uPixelRatio.value = pixelRatio;
+      glowPixelRatio.value = pixelRatio * glowScale;
       const now = performance.now();
       if (started && count && revealStart === null) {
         revealStart = now;
@@ -215,6 +234,7 @@ export function createSatellites(reducedMotion: boolean) {
     dispose() {
       geometry.dispose();
       material.dispose();
+      glowMaterial.dispose();
     },
   };
 }

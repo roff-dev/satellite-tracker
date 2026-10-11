@@ -1,4 +1,5 @@
-import { ACESFilmicToneMapping, Group, Scene, Timer, Vector3, WebGLRenderer } from 'three';
+import { Color, Group, HalfFloatType, Scene, Timer, Vector3, WebGLRenderer } from 'three';
+import { EffectComposer, EffectPass, RenderPass } from 'postprocessing';
 import { clock } from '../time/clock';
 import { gmst, sunDirection } from '../orbit/frames';
 import { createEarth } from './earth';
@@ -6,6 +7,7 @@ import { createAtmosphere } from './atmosphere';
 import { createStars } from './stars';
 import { createCamera, timezoneLongitude } from './camera';
 import { createFpsProbe, initialTier, settingsFor, type Tier } from './quality';
+import { GLOW_LAYER, GlowEffect, compilePasses } from './glow';
 
 export interface Globe {
   scene: Scene;
@@ -13,6 +15,8 @@ export interface Globe {
   /** Unit vector towards the Sun in scene space, updated every frame. */
   sun: Vector3;
   readonly pixelRatio: number;
+  /** Resolution of the glow buffer relative to the screen; 0 when glow is off. */
+  readonly glowScale: number;
   ready: Promise<void>;
   onInteract(fn: () => void): () => void;
   onFrame(fn: (realSeconds: number) => void): () => void;
@@ -24,16 +28,16 @@ export function createGlobe(host: HTMLElement): Globe {
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   let tier = initialTier();
   const renderer = new WebGLRenderer({
-    antialias: tier !== 'low',
+    // Antialiasing comes from the composer's multisampling when glow is on; the low tier goes without
+    antialias: false,
     powerPreference: 'high-performance',
     // Close follow puts the camera metres from a satellite with the Earth thousands of km away
     logarithmicDepthBuffer: true,
   });
   let quality = settingsFor(tier);
   renderer.setPixelRatio(quality.pixelRatio);
-  renderer.toneMapping = ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
-  renderer.setClearColor(0x05070c, 1);
+  const space = new Color(0x05070c);
+  renderer.setClearColor(space, 1);
   renderer.domElement.className = 'globe-canvas';
   host.appendChild(renderer.domElement);
 
@@ -54,20 +58,48 @@ export function createGlobe(host: HTMLElement): Globe {
   renderer.domElement.setAttribute('aria-label', 'Satellite globe. Drag or use the arrow keys to turn it, plus and minus to zoom.');
   renderer.domElement.addEventListener('keydown', (e) => view.keyboard(e));
 
-  const probe = createFpsProbe((next) => {
+  function applyTier(next: Tier) {
     tier = next;
     quality = settingsFor(tier);
     renderer.setPixelRatio(quality.pixelRatio);
     atmosphere.setFull(quality.fullAtmosphere);
+    configureGlow();
     resize();
-  }, renderer);
+  }
+  const probe = createFpsProbe(applyTier, renderer);
   probe.setTier(tier);
+
+  // Glowing satellites and sea sparkle: a composer with a glow pass on the tiers that can afford it
+  let composer: EffectComposer | null = null;
+  let glow: GlowEffect | null = null;
+  let effectPass: EffectPass | null = null;
+  function configureGlow() {
+    if (!quality.glow) {
+      composer?.dispose();
+      composer = glow = effectPass = null;
+      renderer.setClearColor(space, 1);
+      return;
+    }
+    // three encodes the clear colour for the screen even when clearing the composer's linear buffer, and the
+    // composer encodes again on output; clearing with the pre-decoded colour leaves space exactly --void
+    renderer.setClearColor(space.clone().convertSRGBToLinear(), 1);
+    if (!composer) {
+      composer = new EffectComposer(renderer, { multisampling: 4, frameBufferType: HalfFloatType });
+      composer.addPass(new RenderPass(scene, view.camera));
+      glow = new GlowEffect(scene, view.camera);
+      effectPass = new EffectPass(view.camera, glow);
+      composer.addPass(effectPass);
+    }
+    glow!.scale = quality.glow;
+  }
 
   function resize() {
     const { clientWidth: w, clientHeight: h } = host;
     renderer.setSize(w, h, false);
+    composer?.setSize(w, h, false);
     view.resize(w, h);
   }
+  configureGlow();
   const observer = new ResizeObserver(resize);
   observer.observe(host);
   resize();
@@ -95,15 +127,24 @@ export function createGlobe(host: HTMLElement): Globe {
     atmosphere.setSun(sun);
     frameListeners.forEach((fn) => fn(dt));
     view.update(dt);
-    renderer.render(scene, view.camera);
+    if (composer) composer.render(dt);
+    else renderer.render(scene, view.camera);
     probe.frame(performance.now());
   }
 
-  if (import.meta.env.DEV) Object.assign(window, { __overhead: { view, renderer, scene } });
+  if (import.meta.env.DEV) Object.assign(window, { __overhead: { view, renderer, scene, applyTier } });
 
   // Shaders link in the background where the driver allows it, so the page stays responsive meanwhile
   const ready = earth.ready.then(async () => {
+    // Every layer, so the glow copies are ready too
+    const layers = view.camera.layers.mask;
+    view.camera.layers.enable(GLOW_LAYER);
+    // Compiled for the buffer they'll draw into, so nothing compiles again on the first frame
+    renderer.setRenderTarget(composer ? composer.inputBuffer : null);
     await renderer.compileAsync(scene, view.camera);
+    renderer.setRenderTarget(null);
+    view.camera.layers.mask = layers;
+    if (composer && glow && effectPass) await compilePasses(renderer, view.camera, glow.blurMaterials, [effectPass.fullscreenMaterial], composer.inputBuffer);
     view.arrive(timezoneLongitude(), gmst(clock.time));
     requestAnimationFrame(frame);
   });
@@ -115,6 +156,9 @@ export function createGlobe(host: HTMLElement): Globe {
     ready,
     get pixelRatio() {
       return renderer.getPixelRatio();
+    },
+    get glowScale() {
+      return quality.glow;
     },
     get tier() {
       return tier;
@@ -128,6 +172,7 @@ export function createGlobe(host: HTMLElement): Globe {
       running = false;
       observer.disconnect();
       view.dispose();
+      composer?.dispose();
       renderer.dispose();
     },
   };

@@ -1,5 +1,6 @@
-import { BufferAttribute, BufferGeometry, Color, Group, Mesh, ShaderMaterial, Vector3 } from 'three';
+import { BufferAttribute, BufferGeometry, Color, Group, Mesh, ShaderMaterial, Sphere, Vector3 } from 'three';
 import type { EarthMesh } from '../workers/earth.worker';
+import { GLOW_LAYER } from './glow';
 
 const vertexShader = /* glsl */ `
   #include <common>
@@ -60,10 +61,16 @@ const fragmentShader = /* glsl */ `
 
     // Sea facets turned towards the Sun flash
     vec3 H = normalize(uSun + V);
-    colour += vec3(1.0, 0.86, 0.64) * pow(max(dot(N, H), 0.0), 90.0) * 0.6 * ocean * day;
+    vec3 sparkle = vec3(1.0, 0.86, 0.64) * pow(max(dot(N, H), 0.0), 90.0) * 0.6 * ocean * day;
+    colour += sparkle;
 
     // City lights, a facet at a time
     colour += uLights * vSurface.x * vSurface.x * (1.0 - smoothstep(-0.2, 0.04, d)) * 1.4;
+
+    #ifdef GLOW
+      // Into the glow buffer only the sparkle goes; the rest is black but still hides what's behind the Earth
+      colour = sparkle;
+    #endif
 
     gl_FragColor = vec4(colour, 1.0);
     #include <colorspace_fragment>
@@ -87,6 +94,10 @@ export function createEarth() {
     fragmentShader,
   });
 
+  const glowMaterial = material.clone();
+  glowMaterial.uniforms = material.uniforms;
+  glowMaterial.defines = { GLOW: '' };
+
   const ready = new Promise<void>((resolve, reject) => {
     const worker = new Worker(new URL('../workers/earth.worker.ts', import.meta.url), { type: 'module' });
     worker.onmessage = ({ data }: MessageEvent<EarthMesh | { error: string }>) => {
@@ -97,7 +108,11 @@ export function createEarth() {
       geometry.setAttribute('normal', new BufferAttribute(data.normal, 3));
       geometry.setAttribute('aColour', new BufferAttribute(data.colour, 3, true));
       geometry.setAttribute('aSurface', new BufferAttribute(data.surface, 2, true));
-      group.add(new Mesh(geometry, material));
+      // The bounds are known (highest relief is under 1.03), which saves walking 246,000 vertices on the first frame
+      geometry.boundingSphere = new Sphere(new Vector3(), 1.03);
+      const glow = new Mesh(geometry, glowMaterial);
+      glow.layers.set(GLOW_LAYER);
+      group.add(new Mesh(geometry, material), glow);
       resolve();
     };
   });

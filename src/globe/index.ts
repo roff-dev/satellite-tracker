@@ -21,7 +21,7 @@ export function startGlobe(host: HTMLElement, onStatus: (status: CatalogStatus) 
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const globe = createGlobe(host);
   const satellites = createSatellites(reducedMotion);
-  globe.inertial.add(satellites.points);
+  globe.inertial.add(satellites.points, satellites.glowPoints);
 
   let status: CatalogStatus = { count: 0, positioned: 0, sunlit: 0, done: false, failed: [], fetchedAt: null };
   const update = (next: Partial<CatalogStatus>) => onStatus((status = { ...status, ...next }));
@@ -39,7 +39,7 @@ export function startGlobe(host: HTMLElement, onStatus: (status: CatalogStatus) 
   const stopJump = clock.onJump((time) => catalog.jump(time));
   const stopFrame = globe.onFrame(() => {
     catalog.tick(clock.time, clock.speed);
-    satellites.update(clock.time, globe.sun, globe.pixelRatio);
+    satellites.update(clock.time, globe.sun, globe.pixelRatio, globe.glowScale);
   });
   void globe.ready.then(() => satellites.start());
 

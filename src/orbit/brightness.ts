@@ -35,7 +35,8 @@ export function estimateBrightness(type: ObjectType, rcs: number | undefined, si
 }
 
 const GLINT_MIN = 0.35;
-const GLINT_MAX = 3;
+/** Above 3 nothing gets bigger or brighter on screen; the extra range only decides which objects glow. */
+const GLINT_MAX = 8;
 
 /** How strongly a sunlit object glints on the globe, relative to a magnitude-6 object. */
 export function glintIntensity({ magnitude, giant }: Brightness) {

@@ -7,6 +7,8 @@ export interface QualitySettings {
   pixelRatio: number;
   antialias: boolean;
   fullAtmosphere: boolean;
+  /** Resolution of the glow buffer relative to the screen; 0 turns glow off. */
+  glow: number;
 }
 
 type NavigatorHints = Navigator & { deviceMemory?: number; connection?: { saveData?: boolean } };
@@ -24,10 +26,11 @@ export function settingsFor(tier: Tier): QualitySettings {
   const dpr = window.devicePixelRatio || 1;
   switch (tier) {
     case 'high':
+      return { tier, pixelRatio: Math.min(dpr, 2), antialias: true, fullAtmosphere: true, glow: 0.5 };
     case 'medium':
-      return { tier, pixelRatio: Math.min(dpr, 2), antialias: true, fullAtmosphere: true };
+      return { tier, pixelRatio: Math.min(dpr, 2), antialias: true, fullAtmosphere: true, glow: 0.5 };
     case 'low':
-      return { tier, pixelRatio: Math.min(dpr, 1.5), antialias: false, fullAtmosphere: false };
+      return { tier, pixelRatio: Math.min(dpr, 1.5), antialias: false, fullAtmosphere: false, glow: 0 };
   }
 }
 
