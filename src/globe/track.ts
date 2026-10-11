@@ -16,9 +16,11 @@ export function createTrack(inertial: Group, earthFixed: Group) {
   const material = (linewidth: number, opacity: number) =>
     new LineMaterial({ color: flare, linewidth, transparent: opacity < 1, opacity, depthWrite: false });
   const orbitMaterial = material(2, 0.85);
+  const trainMaterial = material(1, 0.45);
   const aheadMaterial = material(1.5, 0.9);
   const behindMaterial = material(1.5, 0.35);
-  const materials = [orbitMaterial, aheadMaterial, behindMaterial];
+  const materials = [orbitMaterial, aheadMaterial, behindMaterial, trainMaterial];
+  let train: Line2 | null = null;
 
   const lines: Line2[] = [];
   let linesVisible = true;
@@ -49,7 +51,23 @@ export function createTrack(inertial: Group, earthFixed: Group) {
       line(track.subarray(now * 3), aheadMaterial, earthFixed);
     },
     clear,
+    /** A faint line through a launch group, in order along the orbit; null removes it. */
+    setTrain(points: Float32Array | null) {
+      if (train) {
+        train.removeFromParent();
+        train.geometry.dispose();
+        train = null;
+      }
+      if (!points || points.length < 6) return;
+      const geometry = new LineGeometry();
+      geometry.setPositions(points);
+      train = new Line2(geometry, trainMaterial);
+      train.renderOrder = 1;
+      train.visible = linesVisible;
+      inertial.add(train);
+    },
     setVisible(visible: boolean) {
+      if (train) train.visible = visible;
       linesVisible = visible;
       for (const drawn of lines) drawn.visible = visible;
     },
@@ -59,6 +77,7 @@ export function createTrack(inertial: Group, earthFixed: Group) {
     },
     dispose() {
       clear();
+      train?.geometry.dispose();
       materials.forEach((m) => m.dispose());
     },
   };

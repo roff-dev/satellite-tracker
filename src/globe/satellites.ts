@@ -33,11 +33,18 @@ const vertexShader = /* glsl */ `
   uniform float uSelected;
   uniform float uHovered;
   uniform float uHidden;
+  uniform float uFilter;
+  uniform float uDebrisShown;
+  uniform float uColourBy;
+  uniform vec3 uGlint;
+  uniform vec3 uMuted;
+  uniform vec3 uInk;
 
   in float aMdot;
   in vec4 aP;
   in vec4 aQ;
   in vec4 aX;
+  in float aGroups;
 
   out vec3 vColour;
   out float vSelected;
@@ -79,14 +86,35 @@ const vertexShader = /* glsl */ `
 
     int kind = int(aX.y + 0.5);
     float glint = aX.z;
+    // The debris and rocket bodies layer can be switched off
+    if (kind >= 2 && uDebrisShown < 0.5) {
+      hide();
+      return;
+    }
     vec3 base = kind <= 1 ? uPayload : kind == 2 ? uRocket : uDebris;
     float size = kind <= 1 ? 2.5 : kind == 2 ? 3.0 : 1.5;
     float opacity = kind == 1 ? 0.6 : 1.0;
 
+    // Colour by what it is, or by the kind of orbit it's on, instead of by sunlight
+    vec3 key = base;
+    if (uColourBy > 0.5 && uColourBy < 1.5) key = kind == 0 ? uGlint : kind == 1 ? uMuted : kind == 2 ? uFlare : uDebris;
+    if (uColourBy > 1.5) key = e >= 0.25 ? uInk : a < 8413.0 ? uShadow : a >= 41060.0 && a <= 43420.0 ? uFlare : uGlint;
+
+    // A group filter dims everything outside the group rather than hiding it, so the rest stays as context
+    float member = 1.0;
+    if (uFilter >= 0.0) {
+      bool inside;
+      if (uFilter > 101.5) inside = kind >= 2;
+      else if (uFilter > 100.5) inside = glint >= 3.98;
+      else if (uFilter > 99.5) inside = uDay - aX.w <= 30.0;
+      else inside = ((int(aGroups + 0.5) >> int(uFilter + 0.5)) & 1) == 1;
+      member = inside ? 1.0 : 0.08;
+    }
+
     // Glint runs 0.35 to 8. On screen it saturates at 3, compressed so the brightest stay amber rather than
     // clipping to white; the range above 3 only picks out the truly bright objects that glow
     float strength = mix(0.35, 1.1, smoothstep(0.35, 3.0, glint));
-    vec3 sunlit = base * strength * (0.3 + 0.7 * phase);
+    vec3 sunlit = key * strength * (0.3 + 0.7 * phase);
     size *= mix(1.0, 0.85 + 0.15 * min(glint, 3.0), lit);
 
     // The loading wave: objects appear as it passes outward through their shell, briefly bright at its crest
@@ -97,10 +125,12 @@ const vertexShader = /* glsl */ `
 
     #ifdef GLOW
       // Only the bright and sunlit spill into a halo, in their own colour
-      vColour = sunlit * lit * opacity * shown * crest * smoothstep(4.0, 8.0, glint);
+      vColour = sunlit * lit * opacity * shown * crest * smoothstep(4.0, 8.0, glint) * step(0.5, member);
       vSelected = 0.0;
     #else
-      vColour = mix(uShadow * 0.25, sunlit, lit) * opacity * shown * crest;
+      // In Earth's shadow: the shadow colour when colouring by light, otherwise its own colour, dimmed
+      vec3 shade = uColourBy < 0.5 ? uShadow * 0.25 : key * 0.3;
+      vColour = mix(shade, sunlit, lit) * opacity * shown * crest * member;
       // The selected object is drawn larger, in the selection colour, with a ring around it
       vSelected = float(gl_VertexID) == uSelected ? 1.0 : 0.0;
       if (vSelected > 0.5) {
@@ -170,6 +200,13 @@ export function createSatellites(reducedMotion: boolean) {
     uHovered: { value: -1 },
     // Not drawn as a point: the object being followed, when it has a model of its own
     uHidden: { value: -1 },
+    // A group's filter code, or -1 for everything
+    uFilter: { value: -1 },
+    uDebrisShown: { value: 1 },
+    uColourBy: { value: 0 },
+    uGlint: { value: token('--glint') },
+    uMuted: { value: token('--muted') },
+    uInk: { value: token('--ink') },
   };
   const material = new ShaderMaterial({
     glslVersion: GLSL3,
@@ -211,6 +248,7 @@ export function createSatellites(reducedMotion: boolean) {
     geometry.setAttribute('aP', new InterleavedBufferAttribute(buffer, 4, 4));
     geometry.setAttribute('aQ', new InterleavedBufferAttribute(buffer, 4, 8));
     geometry.setAttribute('aX', new InterleavedBufferAttribute(buffer, 4, 12));
+    geometry.setAttribute('aGroups', new InterleavedBufferAttribute(buffer, 1, 16));
     points.geometry = geometry;
     glowPoints.geometry = geometry;
   }
@@ -242,6 +280,17 @@ export function createSatellites(reducedMotion: boolean) {
     },
     setHidden(slot: number) {
       uniforms.uHidden.value = slot;
+    },
+    /** Dim everything outside a group (its filter code), or -1 for none. */
+    setFilter(filter: number) {
+      uniforms.uFilter.value = filter;
+    },
+    setDebrisShown(shown: boolean) {
+      uniforms.uDebrisShown.value = shown ? 1 : 0;
+    },
+    /** 0 by sunlight, 1 by what it is, 2 by orbit. */
+    setColourBy(mode: number) {
+      uniforms.uColourBy.value = mode;
     },
     /** Where an object is drawn at this sim time, in scene units, using the shader's own maths; null if it isn't drawn. */
     positionOf(slot: number, time: number, out: Vector3) {

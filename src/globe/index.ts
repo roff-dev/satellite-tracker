@@ -5,6 +5,7 @@ import type { Candidate, Dataset, ObjectDetails, Whereabouts } from '../data/pro
 import { attachPicking } from './picking';
 import { createTrack } from './track';
 import { createFollow } from './follow';
+import { COLOUR_BY, CONSTELLATIONS, GROUPS, HIGHLIGHT_BIT, launchOf, type ColourBy } from '../data/groups';
 import { createGlobe } from './renderer';
 import { createSatellites } from './satellites';
 
@@ -125,6 +126,16 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
     restDistance: () => globe.restDistance,
   });
 
+  // A launch group shown for the selected constellation satellite, and the group filter in force
+  let launch: string | null = null;
+  let filter = -1;
+  async function showLaunch(on: boolean, cospar = '') {
+    launch = on ? launchOf(cospar) : null;
+    if (!launch) track.setTrain(null);
+    satellites.setFilter(launch ? HIGHLIGHT_BIT : filter);
+    return catalog.highlight(launch);
+  }
+
   function startFollowing() {
     if (!selection || follow.following !== null) return;
     const candidate = selection.candidates[selection.index]!;
@@ -155,6 +166,7 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
     const reply = await catalog.describe(slot, time, paths);
     // The selection may have moved on while the worker was answering
     if (selectedSlot() !== slot) return;
+    track.setTrain(reply.train);
     if (reply.paths) {
       track.set(reply.paths.orbit, reply.paths.track, reply.paths.trackNow);
       traced = { slot, time, stepMs: (reply.details.orbit.periodMinutes * 60_000) / 512 };
@@ -166,6 +178,10 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
   function select(next: Selection | null, fly = false) {
     // Riding along ends when the object it was riding with is no longer the selection
     if (follow.following !== null) stopFollowing();
+    // A launch group belongs to the object it was shown for
+    const previous = selection ? selection.candidates[selection.index]!.norad : null;
+    const now = next ? next.candidates[next.index]!.norad : null;
+    if (launch && previous !== now) void showLaunch(false);
     selection = next;
     satellites.setSelected(selectedSlot());
     clearInterval(describeTimer);
@@ -224,6 +240,28 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
     },
     follow: startFollowing,
     stopFollowing,
+    search: (query: string) => catalog.search(query),
+    /** Select an object found some other way than tapping it, and turn to face it. */
+    selectFound(candidate: Candidate) {
+      select({ candidates: [candidate], index: 0 }, true);
+    },
+    /** Pick out a group by its slug, or null for everything; resolves with how many are in it. */
+    async setGroup(slug: string | null) {
+      const group = slug ? GROUPS.find((g) => g.slug === slug) : undefined;
+      filter = group ? group.filter : -1;
+      if (!launch) satellites.setFilter(filter);
+      return group ? catalog.count(group.filter) : 0;
+    },
+    setColourBy(mode: ColourBy) {
+      satellites.setColourBy(COLOUR_BY[mode]);
+    },
+    setDebrisShown(shown: boolean) {
+      satellites.setDebrisShown(shown);
+    },
+    /** For a constellation satellite: show every object from its launch; resolves with how many. */
+    showLaunch,
+    /** Whether a name belongs to a constellation whose launches can be shown. */
+    isConstellation: (name: string) => CONSTELLATIONS.some(([prefix]) => name.startsWith(prefix)),
     /** Screen space covered by the object panel, so the globe can sit beside it. */
     setInsets(right: number, bottom: number) {
       globe.setInsets(right, bottom);
