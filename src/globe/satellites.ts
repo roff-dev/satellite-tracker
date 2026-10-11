@@ -11,7 +11,7 @@ import {
   Vector2,
   Vector3,
 } from 'three';
-import { STRIDE } from '../orbit/elements';
+import { STRIDE, keplerPosition } from '../orbit/elements';
 import { GLOW_LAYER } from './glow';
 import type { ElementsMessage } from '../data/protocol';
 
@@ -32,6 +32,7 @@ const vertexShader = /* glsl */ `
   uniform vec3 uFlare;
   uniform float uSelected;
   uniform float uHovered;
+  uniform float uHidden;
 
   in float aMdot;
   in vec4 aP;
@@ -52,7 +53,7 @@ const vertexShader = /* glsl */ `
     float a = position.x;
     float e = position.y;
     // No orbit (SGP4 failed) or not launched yet at this point in time
-    if (a <= 0.0 || uDay < aX.w) {
+    if (a <= 0.0 || uDay < aX.w || float(gl_VertexID) == uHidden) {
       hide();
       return;
     }
@@ -167,6 +168,8 @@ export function createSatellites(reducedMotion: boolean) {
     uFlare: { value: token('--flare') },
     uSelected: { value: -1 },
     uHovered: { value: -1 },
+    // Not drawn as a point: the object being followed, when it has a model of its own
+    uHidden: { value: -1 },
   };
   const material = new ShaderMaterial({
     glslVersion: GLSL3,
@@ -193,6 +196,7 @@ export function createSatellites(reducedMotion: boolean) {
   glowPoints.layers.set(GLOW_LAYER);
 
   let anchorTime = 0;
+  const teme = new Float64Array(3);
   let count = 0;
   let revealStart: number | null = null;
   let freshStart = reducedMotion ? Infinity : -Infinity;
@@ -235,6 +239,17 @@ export function createSatellites(reducedMotion: boolean) {
     },
     setHovered(slot: number) {
       uniforms.uHovered.value = slot;
+    },
+    setHidden(slot: number) {
+      uniforms.uHidden.value = slot;
+    },
+    /** Where an object is drawn at this sim time, in scene units, using the shader's own maths; null if it isn't drawn. */
+    positionOf(slot: number, time: number, out: Vector3) {
+      const attribute = geometry.getAttribute('position') as InterleavedBufferAttribute | undefined;
+      const el = attribute?.data.array as Float32Array | undefined;
+      if (!el || slot < 0 || slot >= count || !(el[slot * STRIDE]! > 0)) return null;
+      keplerPosition(el, slot * STRIDE, (time - anchorTime) / 1000, teme);
+      return out.set(teme[0]! / 6371, teme[2]! / 6371, -teme[1]! / 6371);
     },
     /** Lets the loading wave begin; it waits for the first objects if they aren't here yet. */
     start() {

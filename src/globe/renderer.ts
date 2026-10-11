@@ -18,6 +18,11 @@ export interface Globe {
   earthFixed: Group;
   /** Turns the view to face a point in space (scene units). */
   flyTo(point: Vector3): void;
+  /** Hand the camera to something else (following an object), and take it back. */
+  suspendCamera(): void;
+  resumeCamera(): void;
+  readonly restDistance: number;
+  readonly reducedMotion: boolean;
   /** Unit vector towards the Sun in scene space, updated every frame. */
   sun: Vector3;
   readonly pixelRatio: number;
@@ -164,6 +169,12 @@ export function createGlobe(host: HTMLElement): Globe {
     inertial,
     earthFixed: earthFrame,
     flyTo: (point: Vector3) => view.flyTo(point),
+    suspendCamera: () => view.suspend(),
+    resumeCamera: () => view.resume(),
+    get restDistance() {
+      return view.restDistance;
+    },
+    reducedMotion,
     sun,
     ready,
     get pixelRatio() {

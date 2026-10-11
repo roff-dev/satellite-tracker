@@ -4,6 +4,7 @@ import { Vector3 } from 'three';
 import type { Candidate, Dataset, ObjectDetails, Whereabouts } from '../data/protocol';
 import { attachPicking } from './picking';
 import { createTrack } from './track';
+import { createFollow } from './follow';
 import { createGlobe } from './renderer';
 import { createSatellites } from './satellites';
 
@@ -49,6 +50,8 @@ export interface GlobeHandlers {
   onSelection(selection: Selection | null): void;
   /** The selected object's details and live position, a few times a second; null when nothing is selected. */
   onDescribed(described: Described | null): void;
+  /** The name of the object the camera is riding with, or null. */
+  onFollow(name: string | null): void;
   onHover(hover: Hover | null): void;
 }
 
@@ -65,7 +68,7 @@ const DESCRIBE_MS = 250;
 const RETRY_AFTER = [30, 60, 120];
 
 /** The globe with the catalogue on it: everything that needs three.js, loaded as one chunk. */
-export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescribed, onHover }: GlobeHandlers, start: StartAt = {}) {
+export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescribed, onFollow, onHover }: GlobeHandlers, start: StartAt = {}) {
   if (start.time !== undefined) clock.set(start.time);
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const globe = createGlobe(host);
@@ -110,6 +113,32 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
   });
 
   const track = createTrack(globe.inertial, globe.earthFixed);
+  const follow = createFollow({
+    camera: globe.camera,
+    inertial: globe.inertial,
+    sun: globe.sun,
+    reducedMotion,
+    positionOf: (slot, time, out) => satellites.positionOf(slot, time, out),
+    hide: (slot) => satellites.setHidden(slot),
+    suspendCamera: () => globe.suspendCamera(),
+    resumeCamera: () => globe.resumeCamera(),
+    restDistance: () => globe.restDistance,
+  });
+
+  function startFollowing() {
+    if (!selection || follow.following !== null) return;
+    const candidate = selection.candidates[selection.index]!;
+    follow.start(candidate.slot, candidate.norad, performance.now(), () => {
+      track.setVisible(true);
+      onFollow(null);
+    });
+    // Riding along is about the view; the orbit and track lines would only cut across it
+    track.setVisible(false);
+    onFollow(candidate.name);
+  }
+  function stopFollowing() {
+    follow.stop(performance.now());
+  }
   let selection: Selection | null = null;
   let describeTimer: ReturnType<typeof setInterval> | undefined;
   /** When the drawn paths were traced, and how long one sample of them spans. */
@@ -135,6 +164,8 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
   }
 
   function select(next: Selection | null, fly = false) {
+    // Riding along ends when the object it was riding with is no longer the selection
+    if (follow.following !== null) stopFollowing();
     selection = next;
     satellites.setSelected(selectedSlot());
     clearInterval(describeTimer);
@@ -148,6 +179,7 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
   }
   const stopPicking = attachPicking(globe.canvas, globe.camera, () => clock.time, catalog.pick, {
     onTap(candidates) {
+      if (follow.following !== null) return;
       select(candidates.length ? { candidates, index: 0 } : null);
     },
     onHover(candidate, x, y) {
@@ -157,8 +189,13 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
   });
   function onKey(event: KeyboardEvent) {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
-    if ((event.target as HTMLElement | null)?.closest('input, textarea, select, [contenteditable]')) return;
-    if (event.key === 'Escape' && selection) select(null);
+    if (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable]')) return;
+    if (event.key === 'Escape' && follow.following !== null) stopFollowing();
+    else if (event.key === 'Escape' && selection) select(null);
+    else if ((event.key === 'f' || event.key === 'F') && selection) {
+      if (follow.following !== null) stopFollowing();
+      else startFollowing();
+    }
     else if ((event.key === 'n' || event.key === 'N') && selection && selection.candidates.length > 1) {
       select({ ...selection, index: (selection.index + 1) % selection.candidates.length });
     } else return;
@@ -171,6 +208,7 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
     track.setResolution(globe.canvas.clientWidth, globe.canvas.clientHeight);
     catalog.tick(clock.time, clock.speed);
     satellites.update(clock.time, globe.sun, globe.pixelRatio, globe.glowScale);
+    follow.update(performance.now(), clock.time);
   });
   void globe.ready.then(() => satellites.start());
 
@@ -184,6 +222,8 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
     deselect() {
       select(null);
     },
+    follow: startFollowing,
+    stopFollowing,
     /** Screen space covered by the object panel, so the globe can sit beside it. */
     setInsets(right: number, bottom: number) {
       globe.setInsets(right, bottom);
@@ -192,6 +232,7 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
       clearTimeout(retryTimer);
       clearInterval(describeTimer);
       track.dispose();
+      follow.dispose();
       stopPicking();
       removeEventListener('keydown', onKey);
       stopJump();

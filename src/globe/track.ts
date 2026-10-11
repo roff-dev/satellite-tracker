@@ -21,12 +21,14 @@ export function createTrack(inertial: Group, earthFixed: Group) {
   const materials = [orbitMaterial, aheadMaterial, behindMaterial];
 
   const lines: Line2[] = [];
+  let linesVisible = true;
   function line(points: Float32Array, lineMaterial: LineMaterial, parent: Group) {
     if (points.length < 6) return;
     const geometry = new LineGeometry();
     geometry.setPositions(points);
     const drawn = new Line2(geometry, lineMaterial);
     drawn.renderOrder = 1;
+    drawn.visible = linesVisible;
     parent.add(drawn);
     lines.push(drawn);
   }
@@ -47,6 +49,10 @@ export function createTrack(inertial: Group, earthFixed: Group) {
       line(track.subarray(now * 3), aheadMaterial, earthFixed);
     },
     clear,
+    setVisible(visible: boolean) {
+      linesVisible = visible;
+      for (const drawn of lines) drawn.visible = visible;
+    },
     /** Line widths are in CSS pixels, so the materials need the canvas size. */
     setResolution(width: number, height: number) {
       for (const m of materials) m.resolution.set(width, height);

@@ -71,6 +71,9 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
     void controls.setFocalOffset(x, y, 0, transition);
   };
   let arriving = false;
+  /** Another part of the globe is flying the camera (following an object); the controls stand aside. */
+  let suspended = false;
+  const NEAR = camera.near;
   const listeners = new Set<() => void>();
   const markInteracted = () => {
     if (interacted) return;
@@ -120,9 +123,11 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
     },
     /** Keeps the view fixed to the ground by turning with the Earth. */
     followEarth(deltaGmst: number) {
+      if (suspended) return;
       void controls.rotate(deltaGmst, 0, false);
     },
     update(deltaSeconds: number) {
+      if (suspended) return false;
       scaleRotation();
       if (!interacted && !reducedMotion) void controls.rotate(MathUtils.degToRad(0.4) * deltaSeconds, 0, false);
       return controls.update(deltaSeconds);
@@ -166,6 +171,26 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
       markInteracted();
       tmp.copy(point).normalize().multiplyScalar(distance);
       void controls.setLookAt(tmp.x, tmp.y, tmp.z, 0, 0, 0, !reducedMotion);
+    },
+    /** Hands the camera over: nothing here moves it until `resume`. The near plane comes in to a metre for close work. */
+    suspend() {
+      suspended = true;
+      arriving = false;
+      controls.enabled = false;
+      camera.near = 1 / 6_371_000;
+      camera.updateProjectionMatrix();
+    },
+    /** Takes the camera back, looking at the Earth's centre from where it was left. */
+    resume() {
+      camera.near = NEAR;
+      camera.updateProjectionMatrix();
+      void controls.setLookAt(camera.position.x, camera.position.y, camera.position.z, 0, 0, 0, false);
+      controls.enabled = true;
+      suspended = false;
+    },
+    /** How far out the camera rests by default, scene units. */
+    get restDistance() {
+      return rest;
     },
     /** Panels covering the right or bottom of the screen (CSS px); 0 for none. The globe glides to the free space. */
     setInsets(right: number, bottom: number) {
