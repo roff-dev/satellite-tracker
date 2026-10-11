@@ -11,7 +11,8 @@ import {
   type SatRec,
 } from 'satellite.js';
 import { CsvReader, readCsv, type Row } from '../data/csv';
-import { Kind, type CatalogRequest, type Dataset, type ElementsMessage, type ProgressMessage } from '../data/protocol';
+import { Kind, type CatalogRequest, type Dataset, type ElementsMessage, type PickRequest, type PickedMessage, type ProgressMessage } from '../data/protocol';
+import { STATION, VISUAL, findNearby } from '../data/pick';
 import { GLINT, KIND, LAUNCH_DAY, STRIDE, writeElements } from '../orbit/elements';
 import { decodeRcsTable, estimateBrightness, glintIntensity, type ObjectType } from '../orbit/brightness';
 
@@ -29,6 +30,11 @@ interface ObjectInfo {
   sizeClass: string;
   epoch: number;
   launchDay: number;
+  lists: number;
+  /** International designator, e.g. 1998-067A. */
+  cospar: string;
+  country: string;
+  launchDate: string;
 }
 
 const recs: SatRec[] = [];
@@ -158,7 +164,8 @@ function emit(anchored: boolean) {
   scope.postMessage(message, [el.buffer]);
 }
 
-function addRow(row: Row) {
+function addRow(row: Row, section: string) {
+  const lists = section === 'stations' ? STATION : section === 'visual' ? VISUAL : 0;
   const norad = Number(row.NORAD_CAT_ID);
   if (!norad || !row.EPOCH) return;
   let rec: SatRec;
@@ -176,13 +183,29 @@ function addRow(row: Row) {
     grow(slot + 1);
     slotOf.set(norad, slot);
     recs.push(rec);
-    objects.push({ norad, name, type: objectType(row, name), sizeClass: row.RCS_SIZE ?? '', epoch, launchDay: Number.isNaN(launch) ? 0 : launch });
+    objects.push({
+      norad,
+      name,
+      type: objectType(row, name),
+      sizeClass: row.RCS_SIZE ?? '',
+      epoch,
+      launchDay: Number.isNaN(launch) ? 0 : launch,
+      lists,
+      cospar: row.OBJECT_ID ?? '',
+      country: row.COUNTRY_CODE ?? '',
+      launchDate: row.LAUNCH_DATE ?? '',
+    });
   } else {
     // The same object from another source: take its type and size, and its orbit if newer
     const info = objects[slot]!;
     if (row.OBJECT_TYPE) info.type = objectType(row, name);
     if (row.RCS_SIZE) info.sizeClass = row.RCS_SIZE;
-    if (!Number.isNaN(launch)) info.launchDay = launch;
+    if (!Number.isNaN(launch)) {
+      info.launchDay = launch;
+      info.launchDate = row.LAUNCH_DATE!;
+    }
+    if (row.COUNTRY_CODE) info.country = row.COUNTRY_CODE;
+    info.lists |= lists;
     if (epoch > info.epoch) {
       info.epoch = epoch;
       recs[slot] = rec;
@@ -299,6 +322,11 @@ async function loadCatalogue() {
   }
 }
 
+function pick({ id, ...request }: PickRequest) {
+  const message: PickedMessage = { type: 'picked', id, candidates: findNearby(master, objects, anchorTime, request) };
+  scope.postMessage(message);
+}
+
 function load() {
   loading ??= loadCatalogue().finally(() => (loading = null));
 }
@@ -310,6 +338,7 @@ scope.onmessage = (event: MessageEvent<CatalogRequest>) => {
     return;
   }
   if (request.type === 'retry') return load();
+  if (request.type === 'pick') return pick(request);
   anchorAll(request.time);
   emit(true);
 };

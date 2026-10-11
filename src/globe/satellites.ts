@@ -29,6 +29,9 @@ const vertexShader = /* glsl */ `
   uniform vec3 uRocket;
   uniform vec3 uDebris;
   uniform vec3 uShadow;
+  uniform vec3 uFlare;
+  uniform float uSelected;
+  uniform float uHovered;
 
   in float aMdot;
   in vec4 aP;
@@ -36,6 +39,7 @@ const vertexShader = /* glsl */ `
   in vec4 aX;
 
   out vec3 vColour;
+  out float vSelected;
 
   const float KM = 1.0 / 6371.0;
 
@@ -93,8 +97,18 @@ const vertexShader = /* glsl */ `
     #ifdef GLOW
       // Only the bright and sunlit spill into a halo, in their own colour
       vColour = sunlit * lit * opacity * shown * crest * smoothstep(4.0, 8.0, glint);
+      vSelected = 0.0;
     #else
       vColour = mix(uShadow * 0.25, sunlit, lit) * opacity * shown * crest;
+      // The selected object is drawn larger, in the selection colour, with a ring around it
+      vSelected = float(gl_VertexID) == uSelected ? 1.0 : 0.0;
+      if (vSelected > 0.5) {
+        vColour = uFlare;
+        size = 22.0;
+      } else if (float(gl_VertexID) == uHovered) {
+        size = max(size, 5.0);
+        vColour = max(vColour, sunlit * 0.9);
+      }
     #endif
 
     gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
@@ -105,6 +119,7 @@ const vertexShader = /* glsl */ `
 
 const fragmentShader = /* glsl */ `
   in vec3 vColour;
+  in float vSelected;
   // three's output chunks still write gl_FragColor, which GLSL 3 doesn't have
   out highp vec4 fragColour;
   #define gl_FragColor fragColour
@@ -116,7 +131,10 @@ const fragmentShader = /* glsl */ `
     #include <logdepthbuf_fragment>
     float r = length(gl_PointCoord - 0.5) * 2.0;
     if (r > 1.0) discard;
-    gl_FragColor = vec4(vColour, 1.0 - smoothstep(0.0, 1.0, r));
+    float alpha = 1.0 - smoothstep(0.0, 1.0, r);
+    // Selected: a 7 px core and a thin ring, in a 22 px sprite
+    if (vSelected > 0.5) alpha = (1.0 - smoothstep(0.26, 0.34, r)) + smoothstep(0.7, 0.76, r) * (1.0 - smoothstep(0.82, 0.88, r));
+    gl_FragColor = vec4(vColour, alpha);
     #include <colorspace_fragment>
   }
 `;
@@ -146,6 +164,9 @@ export function createSatellites(reducedMotion: boolean) {
     uRocket: { value: new Color('#f3e9d8') },
     uDebris: { value: token('--faint') },
     uShadow: { value: token('--cool') },
+    uFlare: { value: token('--flare') },
+    uSelected: { value: -1 },
+    uHovered: { value: -1 },
   };
   const material = new ShaderMaterial({
     glslVersion: GLSL3,
@@ -207,6 +228,13 @@ export function createSatellites(reducedMotion: boolean) {
       count = next;
       anchorTime = time;
       geometry.setDrawRange(0, count);
+    },
+    /** Highlights one object (its buffer slot), or none with -1. */
+    setSelected(slot: number) {
+      uniforms.uSelected.value = slot;
+    },
+    setHovered(slot: number) {
+      uniforms.uHovered.value = slot;
     },
     /** Lets the loading wave begin; it waits for the first objects if they aren't here yet. */
     start() {

@@ -1,4 +1,4 @@
-import { Color, Group, HalfFloatType, Scene, Timer, Vector3, WebGLRenderer } from 'three';
+import { Color, Group, HalfFloatType, Scene, Timer, Vector3, WebGLRenderer, type PerspectiveCamera } from 'three';
 import { EffectComposer, EffectPass, RenderPass } from 'postprocessing';
 import { clock } from '../time/clock';
 import { gmst, sunDirection } from '../orbit/frames';
@@ -11,6 +11,8 @@ import { GLOW_LAYER, GlowEffect, compilePasses } from './glow';
 
 export interface Globe {
   scene: Scene;
+  camera: PerspectiveCamera;
+  canvas: HTMLCanvasElement;
   inertial: Group;
   /** Unit vector towards the Sun in scene space, updated every frame. */
   sun: Vector3;
@@ -19,6 +21,8 @@ export interface Globe {
   readonly glowScale: number;
   ready: Promise<void>;
   onInteract(fn: () => void): () => void;
+  /** Screen space covered by panels (CSS px), so the globe can centre itself in the rest. */
+  setInsets(right: number, bottom: number): void;
   onFrame(fn: (realSeconds: number) => void): () => void;
   readonly tier: Tier;
   dispose(): void;
@@ -151,6 +155,8 @@ export function createGlobe(host: HTMLElement): Globe {
 
   return {
     scene,
+    camera: view.camera,
+    canvas: renderer.domElement,
     inertial,
     sun,
     ready,
@@ -164,6 +170,7 @@ export function createGlobe(host: HTMLElement): Globe {
       return tier;
     },
     onInteract: view.onInteract,
+    setInsets: view.setInsets,
     onFrame(fn) {
       frameListeners.add(fn);
       return () => frameListeners.delete(fn);

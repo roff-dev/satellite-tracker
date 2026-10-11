@@ -1,6 +1,7 @@
 import { clock } from '../time/clock';
 import { connectCatalog } from '../data/catalog';
-import type { Dataset } from '../data/protocol';
+import type { Candidate, Dataset } from '../data/protocol';
+import { attachPicking } from './picking';
 import { createGlobe } from './renderer';
 import { createSatellites } from './satellites';
 
@@ -22,11 +23,30 @@ export interface CatalogStatus {
   retryAt: number | null;
 }
 
+export interface Selection {
+  /** Everything under the tap, best first; one of them is selected and the rest are nearby. */
+  candidates: Candidate[];
+  index: number;
+}
+
+export interface Hover {
+  name: string;
+  /** Pointer position in the canvas, CSS pixels. */
+  x: number;
+  y: number;
+}
+
+export interface GlobeHandlers {
+  onStatus(status: CatalogStatus): void;
+  onSelection(selection: Selection | null): void;
+  onHover(hover: Hover | null): void;
+}
+
 /** Seconds before each automatic retry when something failed to load. */
 const RETRY_AFTER = [30, 60, 120];
 
 /** The globe with the catalogue on it: everything that needs three.js, loaded as one chunk. */
-export function startGlobe(host: HTMLElement, onStatus: (status: CatalogStatus) => void) {
+export function startGlobe(host: HTMLElement, { onStatus, onSelection, onHover }: GlobeHandlers) {
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const globe = createGlobe(host);
   const satellites = createSatellites(reducedMotion);
@@ -63,6 +83,32 @@ export function startGlobe(host: HTMLElement, onStatus: (status: CatalogStatus) 
     },
   });
 
+  let selection: Selection | null = null;
+  function select(next: Selection | null) {
+    selection = next;
+    satellites.setSelected(next ? next.candidates[next.index]!.slot : -1);
+    onSelection(next);
+  }
+  const stopPicking = attachPicking(globe.canvas, globe.camera, () => clock.time, catalog.pick, {
+    onTap(candidates) {
+      select(candidates.length ? { candidates, index: 0 } : null);
+    },
+    onHover(candidate, x, y) {
+      satellites.setHovered(candidate ? candidate.slot : -1);
+      onHover(candidate ? { name: candidate.name, x, y } : null);
+    },
+  });
+  function onKey(event: KeyboardEvent) {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    if ((event.target as HTMLElement | null)?.closest('input, textarea, select, [contenteditable]')) return;
+    if (event.key === 'Escape' && selection) select(null);
+    else if ((event.key === 'n' || event.key === 'N') && selection && selection.candidates.length > 1) {
+      select({ ...selection, index: (selection.index + 1) % selection.candidates.length });
+    } else return;
+    event.preventDefault();
+  }
+  addEventListener('keydown', onKey);
+
   const stopJump = clock.onJump((time) => catalog.jump(time));
   const stopFrame = globe.onFrame(() => {
     catalog.tick(clock.time, clock.speed);
@@ -73,8 +119,21 @@ export function startGlobe(host: HTMLElement, onStatus: (status: CatalogStatus) 
   return {
     globe,
     retryNow,
+    /** Swap the selection to another of the objects under the last tap. */
+    choose(index: number) {
+      if (selection) select({ ...selection, index });
+    },
+    deselect() {
+      select(null);
+    },
+    /** Screen space covered by the object panel, so the globe can sit beside it. */
+    setInsets(right: number, bottom: number) {
+      globe.setInsets(right, bottom);
+    },
     dispose() {
       clearTimeout(retryTimer);
+      stopPicking();
+      removeEventListener('keydown', onKey);
       stopJump();
       stopFrame();
       catalog.dispose();
