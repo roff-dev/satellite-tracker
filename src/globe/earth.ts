@@ -1,26 +1,18 @@
-import {
-  Group,
-  ImageBitmapLoader,
-  LinearMipmapLinearFilter,
-  Mesh,
-  NoColorSpace,
-  ShaderMaterial,
-  SphereGeometry,
-  SRGBColorSpace,
-  Texture,
-  Vector3,
-  type WebGLRenderer,
-} from 'three';
-import type { QualitySettings } from './quality';
+import { BufferAttribute, BufferGeometry, Color, Group, Mesh, ShaderMaterial, Vector3 } from 'three';
+import type { EarthMesh } from '../workers/earth.worker';
 
 const vertexShader = /* glsl */ `
   #include <common>
   #include <logdepthbuf_pars_vertex>
-  varying vec2 vUv;
+  attribute vec3 aColour;
+  attribute vec2 aSurface;
+  varying vec3 vColour;
+  varying vec2 vSurface;
   varying vec3 vNormalW;
   varying vec3 vPosW;
   void main() {
-    vUv = uv;
+    vColour = aColour;
+    vSurface = aSurface;
     vNormalW = normalize(mat3(modelMatrix) * normal);
     vec4 world = modelMatrix * vec4(position, 1.0);
     vPosW = world.xyz;
@@ -30,10 +22,11 @@ const vertexShader = /* glsl */ `
 `;
 
 const fragmentShader = /* glsl */ `
-  uniform sampler2D uDay;
-  uniform sampler2D uNightOcean;
   uniform vec3 uSun;
-  varying vec2 vUv;
+  uniform vec3 uShadow;
+  uniform vec3 uLights;
+  varying vec3 vColour;
+  varying vec2 vSurface;
   varying vec3 vNormalW;
   varying vec3 vPosW;
   #include <common>
@@ -44,125 +37,76 @@ const fragmentShader = /* glsl */ `
     vec3 N = normalize(vNormalW);
     vec3 V = normalize(cameraPosition - vPosW);
     float d = dot(N, uSun);
+    float ocean = vSurface.y;
 
-    vec3 day = texture2D(uDay, vUv).rgb;
-    vec2 nightOcean = texture2D(uNightOcean, vUv).rg;
-    float ocean = smoothstep(0.35, 0.65, nightOcean.g);
+    // The palette comes straight from the satellite imagery; lift and saturate it a little for the stylised look
+    vec3 base = pow(vColour, vec3(2.2));
+    float grey = dot(base, vec3(0.2126, 0.7152, 0.0722));
+    base = max(mix(vec3(grey), base, 1.35), 0.0) * 2.1;
 
-    // Sunlight, with a soft terminator rather than a hard Lambert edge
-    float sun = smoothstep(-0.10, 0.22, d) * (0.4 + 0.6 * max(d, 0.0));
-    vec3 color = day * (0.03 + 1.45 * sun);
-    // Faint earthshine keeps the night side readable against space
-    color += vec3(0.004, 0.008, 0.018) * (1.0 - sun);
+    // Soft, flat light: every facet reads, and nothing on the day side goes black
+    float day = smoothstep(-0.05, 0.14, d);
+    vec3 colour = base * (0.42 + 0.58 * max(d, 0.0)) * day;
+    // How far each facet tilts from the true sphere, towards or away from the Sun, exaggerated so the facets read
+    float facet = dot(N - normalize(vPosW), uSun);
+    colour *= clamp(1.0 + mix(4.0, 3.0, ocean) * facet, 0.55, 1.6);
 
-    // The day side warms as the Sun gets low
-    float twilight = (1.0 - smoothstep(0.0, 0.3, abs(d - 0.04))) * smoothstep(-0.12, 0.05, d);
-    color *= mix(vec3(1.0), vec3(1.25, 0.82, 0.6), twilight * 0.7);
+    // Night: a deep navy taken from the shadow colour, with the land faintly visible
+    colour += (uShadow * 0.012 + base * 0.018) * (1.0 - day);
 
-    // Sun glint on open water
+    // Warmth along the terminator
+    float twilight = (1.0 - smoothstep(0.0, 0.22, abs(d - 0.03))) * day;
+    colour *= mix(vec3(1.0), vec3(1.3, 0.85, 0.62), twilight * 0.6);
+
+    // Sea facets turned towards the Sun flash
     vec3 H = normalize(uSun + V);
-    float nh = max(dot(N, H), 0.0);
-    float facing = smoothstep(0.3, 0.75, dot(N, V));
-    float glint = (pow(nh, 320.0) * 0.55 + pow(nh, 48.0) * 0.06) * ocean * smoothstep(0.0, 0.12, d) * facing;
-    color += vec3(1.0, 0.8, 0.56) * glint;
+    colour += vec3(1.0, 0.86, 0.64) * pow(max(dot(N, H), 0.0), 90.0) * 0.6 * ocean * day;
 
-    // City lights: sodium amber, only where it's dark
-    float lights = pow(nightOcean.r, 1.8) * (1.0 - smoothstep(-0.18, 0.06, d)) * (1.0 - ocean);
-    color += vec3(1.0, 0.6, 0.26) * lights * 1.6;
+    // City lights, a facet at a time
+    colour += uLights * vSurface.x * vSurface.x * (1.0 - smoothstep(-0.2, 0.04, d)) * 1.4;
 
-    // Atmosphere seen edge-on across the lit limb
-    float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.5);
-    vec3 air = mix(vec3(1.0, 0.48, 0.24), vec3(0.32, 0.58, 1.0), smoothstep(-0.05, 0.35, d));
-    color += air * fresnel * smoothstep(-0.25, 0.15, d) * 0.75;
-    color += vec3(0.1, 0.17, 0.38) * fresnel * (1.0 - smoothstep(-0.25, 0.15, d)) * 0.22;
-
-    gl_FragColor = vec4(color, 1.0);
-    #include <tonemapping_fragment>
+    gl_FragColor = vec4(colour, 1.0);
     #include <colorspace_fragment>
   }
 `;
 
-export function createEarth(renderer: WebGLRenderer, quality: QualitySettings) {
+function token(name: string) {
+  return new Color(getComputedStyle(document.documentElement).getPropertyValue(name).trim());
+}
+
+/** The faceted Earth. Its mesh is built in a worker from earth.bin; ready resolves once it's in the scene. */
+export function createEarth() {
   const group = new Group();
-  const blank = new Texture();
   const material = new ShaderMaterial({
     uniforms: {
-      uDay: { value: blank },
-      uNightOcean: { value: blank },
       uSun: { value: new Vector3(1, 0, 0) },
+      uShadow: { value: token('--cool') },
+      uLights: { value: token('--glint') },
     },
     vertexShader,
     fragmentShader,
   });
-  const mesh = new Mesh(new SphereGeometry(1, 192, 128), material);
-  group.add(mesh);
 
-  const loader = new ImageBitmapLoader().setOptions({ imageOrientation: 'flipY' });
-  const anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-
-  function load(url: string, srgb: boolean): Promise<Texture> {
-    return new Promise((resolve, reject) => {
-      loader.load(
-        url,
-        (bitmap) => {
-          const texture = new Texture(bitmap);
-          texture.colorSpace = srgb ? SRGBColorSpace : NoColorSpace;
-          texture.flipY = false;
-          texture.anisotropy = anisotropy;
-          texture.minFilter = LinearMipmapLinearFilter;
-          texture.needsUpdate = true;
-          resolve(texture);
-        },
-        undefined,
-        reject,
-      );
-    });
-  }
-
-  function swap(uniform: 'uDay' | 'uNightOcean', texture: Texture) {
-    // Upload before swapping so the switch never shows a blank frame
-    renderer.initTexture(texture);
-    const previous = material.uniforms[uniform]!.value as Texture;
-    material.uniforms[uniform]!.value = texture;
-    if (previous !== blank) {
-      (previous.image as ImageBitmap | undefined)?.close?.();
-      previous.dispose();
-    }
-  }
-
-  let generation = 0;
-  /** Loads textures smallest first, upgrading as each arrives. Resolves when the first pair is on screen. */
-  async function loadTextures(settings: QualitySettings) {
-    const run = ++generation;
-    const [day, night] = await Promise.all([load('/textures/day-1024.avif', true), load('/textures/night-ocean-2048.avif', false)]);
-    if (run !== generation) return;
-    swap('uDay', day);
-    swap('uNightOcean', night);
-    const upgrades: Array<['uDay' | 'uNightOcean', string, boolean]> = [];
-    for (const size of [2048, 4096, 8192] as const) {
-      if (size <= settings.dayTexture) upgrades.push(['uDay', `/textures/day-${size}.avif`, true]);
-    }
-    if (settings.nightTexture === 4096) upgrades.push(['uNightOcean', '/textures/night-ocean-4096.avif', false]);
-    void (async () => {
-      for (const [uniform, url, srgb] of upgrades) {
-        await new Promise((r) => (window.requestIdleCallback ?? setTimeout)(r));
-        const texture = await load(url, srgb).catch(() => null);
-        if (!texture || run !== generation) return;
-        swap(uniform, texture);
-      }
-    })();
-  }
-
-  const ready = loadTextures(quality);
+  const ready = new Promise<void>((resolve, reject) => {
+    const worker = new Worker(new URL('../workers/earth.worker.ts', import.meta.url), { type: 'module' });
+    worker.onmessage = ({ data }: MessageEvent<EarthMesh | { error: string }>) => {
+      worker.terminate();
+      if ('error' in data) return reject(new Error(data.error));
+      const geometry = new BufferGeometry();
+      geometry.setAttribute('position', new BufferAttribute(data.position, 3));
+      geometry.setAttribute('normal', new BufferAttribute(data.normal, 3));
+      geometry.setAttribute('aColour', new BufferAttribute(data.colour, 3, true));
+      geometry.setAttribute('aSurface', new BufferAttribute(data.surface, 2, true));
+      group.add(new Mesh(geometry, material));
+      resolve();
+    };
+  });
 
   return {
     group,
     ready,
     setSun(direction: Vector3) {
       (material.uniforms.uSun!.value as Vector3).copy(direction);
-    },
-    setQuality(settings: QualitySettings) {
-      void loadTextures(settings);
     },
   };
 }

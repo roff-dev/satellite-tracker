@@ -29,7 +29,7 @@ export function createGlobe(host: HTMLElement): Globe {
     // Close follow puts the camera metres from a satellite with the Earth thousands of km away
     logarithmicDepthBuffer: true,
   });
-  let quality = settingsFor(tier, renderer.capabilities.maxTextureSize);
+  let quality = settingsFor(tier);
   renderer.setPixelRatio(quality.pixelRatio);
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
@@ -42,7 +42,7 @@ export function createGlobe(host: HTMLElement): Globe {
   const earthFrame = new Group(); // turns with the Earth
   scene.add(inertial, earthFrame);
 
-  const earth = createEarth(renderer, quality);
+  const earth = createEarth();
   earthFrame.add(earth.group);
   const atmosphere = createAtmosphere();
   atmosphere.setFull(quality.fullAtmosphere);
@@ -56,10 +56,9 @@ export function createGlobe(host: HTMLElement): Globe {
 
   const probe = createFpsProbe((next) => {
     tier = next;
-    quality = settingsFor(tier, renderer.capabilities.maxTextureSize);
+    quality = settingsFor(tier);
     renderer.setPixelRatio(quality.pixelRatio);
     atmosphere.setFull(quality.fullAtmosphere);
-    earth.setQuality(quality);
     resize();
   }, renderer);
   probe.setTier(tier);

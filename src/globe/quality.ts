@@ -5,8 +5,6 @@ export type Tier = 'low' | 'medium' | 'high';
 export interface QualitySettings {
   tier: Tier;
   pixelRatio: number;
-  dayTexture: 2048 | 4096 | 8192;
-  nightTexture: 2048 | 4096;
   antialias: boolean;
   fullAtmosphere: boolean;
 }
@@ -22,23 +20,14 @@ export function initialTier(): Tier {
   return finePointer ? 'high' : 'medium';
 }
 
-export function settingsFor(tier: Tier, maxTextureSize: number): QualitySettings {
+export function settingsFor(tier: Tier): QualitySettings {
   const dpr = window.devicePixelRatio || 1;
-  const fits = (size: number) => maxTextureSize >= size;
   switch (tier) {
     case 'high':
-      return {
-        tier,
-        pixelRatio: Math.min(dpr, 2),
-        dayTexture: fits(8192) ? 8192 : fits(4096) ? 4096 : 2048,
-        nightTexture: fits(4096) ? 4096 : 2048,
-        antialias: true,
-        fullAtmosphere: true,
-      };
     case 'medium':
-      return { tier, pixelRatio: Math.min(dpr, 2), dayTexture: fits(4096) ? 4096 : 2048, nightTexture: 2048, antialias: true, fullAtmosphere: true };
+      return { tier, pixelRatio: Math.min(dpr, 2), antialias: true, fullAtmosphere: true };
     case 'low':
-      return { tier, pixelRatio: Math.min(dpr, 1.5), dayTexture: 2048, nightTexture: 2048, antialias: false, fullAtmosphere: false };
+      return { tier, pixelRatio: Math.min(dpr, 1.5), antialias: false, fullAtmosphere: false };
   }
 }
 
