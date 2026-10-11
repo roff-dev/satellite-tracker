@@ -1,4 +1,5 @@
 import type { ObjectType } from '../orbit/brightness';
+import type { OrbitNumbers } from '../orbit/describe';
 
 /** Object kinds as stored in the element buffer and read by the shader. */
 export const Kind = { Active: 0, Dead: 1, Rocket: 2, Debris: 3 } as const;
@@ -12,7 +13,72 @@ export type CatalogRequest =
   | { type: 'recycle'; buffer: ArrayBuffer }
   /** Try again for any dataset that couldn't be fetched. */
   | { type: 'retry' }
-  | PickRequest;
+  | PickRequest
+  | DescribeRequest
+  /** Look an object up by its catalogue number, for links that name one. */
+  | { type: 'find'; id: number; norad: number };
+
+/** Everything the panel shows about one object, at one moment. */
+export interface DescribeRequest {
+  type: 'describe';
+  id: number;
+  slot: number;
+  /** Sim time (ms). */
+  time: number;
+  /** Also trace its orbit and ground track, which takes a few milliseconds. */
+  paths: boolean;
+}
+
+export interface ObjectDetails {
+  norad: number;
+  name: string;
+  /** International designator, e.g. 1998-067A. */
+  cospar: string;
+  type: ObjectType;
+  station: boolean;
+  /** Owner code as the catalogue gives it (US, PRC, CIS…), or empty. */
+  country: string;
+  launchDate: string;
+  /** Launch site code, when the catalogue of working satellites has one. */
+  site: string;
+  /** When the orbit was measured (ms). */
+  epoch: number;
+  magnitude: number | null;
+  giant: boolean;
+  /** For payloads: whether it still works, once that's known. */
+  working: boolean | null;
+  orbit: OrbitNumbers;
+}
+
+export interface Whereabouts {
+  altitudeKm: number;
+  speedKms: number;
+  sunlit: boolean;
+  /** Scene units, in space (not turning with the Earth). */
+  position: [number, number, number];
+}
+
+export interface DescribedMessage {
+  type: 'described';
+  id: number;
+  details: ObjectDetails;
+  /** Null when its orbit can't be worked out for this moment. */
+  now: Whereabouts | null;
+  paths: {
+    /** One orbit centred on the moment asked, scene units in space, xyz per point. */
+    orbit: Float32Array;
+    /** Half an orbit back to a whole orbit ahead, on the turning Earth, xyz per point. */
+    track: Float32Array;
+    /** Index of the track point nearest the moment asked: before it is the past. */
+    trackNow: number;
+  } | null;
+}
+
+export interface FoundMessage {
+  type: 'found';
+  id: number;
+  candidate: Candidate | null;
+}
 
 /** Find the objects drawn near a point on screen, as they were at a given moment. */
 export interface PickRequest {
@@ -77,4 +143,4 @@ export interface ProgressMessage {
   done: boolean;
 }
 
-export type CatalogEvent = ElementsMessage | ProgressMessage | PickedMessage;
+export type CatalogEvent = ElementsMessage | ProgressMessage | PickedMessage | DescribedMessage | FoundMessage;

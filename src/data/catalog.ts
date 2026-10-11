@@ -1,4 +1,8 @@
-import type { Candidate, CatalogEvent, CatalogRequest, ElementsMessage, PickRequest, ProgressMessage } from './protocol';
+import type { Candidate, CatalogEvent, CatalogRequest, DescribedMessage, ElementsMessage, PickRequest, ProgressMessage } from './protocol';
+
+type Reply = Extract<CatalogEvent, { id: number }>;
+/** A request that expects a reply, before its id is attached. */
+type Question = Extract<CatalogRequest, { id: number }> extends infer R ? (R extends unknown ? Omit<R, 'id'> : never) : never;
 
 /** How far (sim ms) the drawn orbits may drift from their anchor before the worker re-anchors them. */
 const ANCHOR_SPAN = 60_000;
@@ -21,8 +25,14 @@ export function connectCatalog(startTime: number, handlers: CatalogHandlers) {
   let inFlight = false;
   let wanted: number | null = null;
   let shown: Float32Array | null = null;
-  let pickId = 0;
-  const picks = new Map<number, (candidates: Candidate[]) => void>();
+  let requestId = 0;
+  const replies = new Map<number, (reply: Reply) => void>();
+  /** Sends a request that gets one reply, matched up by id. */
+  function ask<T extends Reply>(request: Question) {
+    const id = ++requestId;
+    send({ ...request, id } as CatalogRequest);
+    return new Promise<T>((resolve) => replies.set(id, resolve as (reply: Reply) => void));
+  }
 
   function anchor(time: number) {
     if (inFlight) {
@@ -35,9 +45,9 @@ export function connectCatalog(startTime: number, handlers: CatalogHandlers) {
 
   worker.onmessage = ({ data }: MessageEvent<CatalogEvent>) => {
     if (data.type === 'progress') return handlers.onProgress(data);
-    if (data.type === 'picked') {
-      picks.get(data.id)?.(data.candidates);
-      picks.delete(data.id);
+    if ('id' in data) {
+      replies.get(data.id)?.(data);
+      replies.delete(data.id);
       return;
     }
     const previous = shown;
@@ -67,10 +77,18 @@ export function connectCatalog(startTime: number, handlers: CatalogHandlers) {
     /** Timeline jumps re-anchor straight away. */
     jump: anchor,
     /** The objects drawn near a point on screen, best first. */
-    pick(request: Omit<PickRequest, 'type' | 'id'>) {
-      const id = ++pickId;
-      send({ type: 'pick', id, ...request });
-      return new Promise<Candidate[]>((resolve) => picks.set(id, resolve));
+    async pick(request: Omit<PickRequest, 'type' | 'id'>): Promise<Candidate[]> {
+      const reply = await ask<Extract<Reply, { type: 'picked' }>>({ type: 'pick', ...request });
+      return reply.candidates;
+    },
+    /** Details, position and (when asked) the orbit and ground track of one object. */
+    describe(slot: number, time: number, paths: boolean) {
+      return ask<DescribedMessage>({ type: 'describe', slot, time, paths });
+    },
+    /** The object with this catalogue number, if it's loaded. */
+    async find(norad: number): Promise<Candidate | null> {
+      const reply = await ask<Extract<Reply, { type: 'found' }>>({ type: 'find', norad });
+      return reply.candidate;
     },
     /** Fetch again whatever failed to load. */
     retry() {

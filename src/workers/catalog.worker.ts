@@ -7,11 +7,26 @@ import {
   propagate,
   sunPos,
   jday,
+  gstime,
+  eciToGeodetic,
   type OMMJsonObject,
   type SatRec,
 } from 'satellite.js';
 import { CsvReader, readCsv, type Row } from '../data/csv';
-import { Kind, type CatalogRequest, type Dataset, type ElementsMessage, type PickRequest, type PickedMessage, type ProgressMessage } from '../data/protocol';
+import {
+  Kind,
+  type CatalogRequest,
+  type DescribeRequest,
+  type DescribedMessage,
+  type Dataset,
+  type ElementsMessage,
+  type FoundMessage,
+  type PickRequest,
+  type PickedMessage,
+  type ProgressMessage,
+  type Whereabouts,
+} from '../data/protocol';
+import { orbitNumbers } from '../orbit/describe';
 import { STATION, VISUAL, findNearby } from '../data/pick';
 import { GLINT, KIND, LAUNCH_DAY, STRIDE, writeElements } from '../orbit/elements';
 import { decodeRcsTable, estimateBrightness, glintIntensity, type ObjectType } from '../orbit/brightness';
@@ -49,6 +64,8 @@ const spare: ArrayBuffer[] = [];
 
 let rcsTable: Map<number, number> | null = null;
 let operational: Set<number> | null = null;
+/** Launch site codes, from the catalogue of working satellites. */
+const siteOf = new Map<number, string>();
 let bulk: Awaited<ReturnType<typeof createBulk>> | null = null;
 let bulkStale = true;
 
@@ -311,6 +328,7 @@ async function loadCatalogue() {
       response.body!,
       new CsvReader((row) => {
         if (OPERATIONAL.has(row.OPS_STATUS_CODE ?? '')) active.add(Number(row.NORAD_CAT_ID));
+        if (row.LAUNCH_SITE) siteOf.set(Number(row.NORAD_CAT_ID), row.LAUNCH_SITE);
       }),
     );
     operational = active;
@@ -327,6 +345,102 @@ function pick({ id, ...request }: PickRequest) {
   scope.postMessage(message);
 }
 
+/** SGP4's Earth radius (WGS 72), the reference for its orbit heights. */
+const SGP4_EARTH_KM = 6378.135;
+/** Samples per orbit for the drawn path and ground track. */
+const PATH_SAMPLES = 512;
+/** Just above the highest land, so the track is never buried in the relief. */
+const TRACK_RADIUS = 1.027;
+
+function placeAt(rec: SatRec, date: Date) {
+  return propagate(rec, date, { communityDecayCheckEnabled: true });
+}
+
+function whereabouts(rec: SatRec, time: number): Whereabouts | null {
+  const date = new Date(time);
+  const state = placeAt(rec, date);
+  if (!state) return null;
+  const { position: r, velocity: v } = state;
+  const { x, y, z } = sunPos(jday(date)).rsun;
+  const n = Math.hypot(x, y, z);
+  const along = (r.x * x + r.y * y + r.z * z) / n;
+  const across = Math.hypot(r.y * z - r.z * y, r.z * x - r.x * z, r.x * y - r.y * x) / n;
+  return {
+    // Measured from the same equatorial radius as its highest and lowest points, so it always falls between them
+    altitudeKm: Math.hypot(r.x, r.y, r.z) - SGP4_EARTH_KM,
+    speedKms: Math.hypot(v.x, v.y, v.z),
+    sunlit: along > 0 || across > EARTH_RADIUS_KM,
+    position: [r.x / EARTH_RADIUS_KM, r.z / EARTH_RADIUS_KM, -r.y / EARTH_RADIUS_KM],
+  };
+}
+
+/** One orbit in space centred on the time, and the ground track from half an orbit back to one ahead. */
+function trace(rec: SatRec, time: number) {
+  const periodMs = ((2 * Math.PI) / rec.no) * 60_000;
+  const step = periodMs / PATH_SAMPLES;
+  const orbit: number[] = [];
+  for (let i = -PATH_SAMPLES / 2; i <= PATH_SAMPLES / 2; i++) {
+    const state = placeAt(rec, new Date(time + i * step));
+    if (!state) continue;
+    const { x, y, z } = state.position;
+    orbit.push(x / EARTH_RADIUS_KM, z / EARTH_RADIUS_KM, -y / EARTH_RADIUS_KM);
+  }
+  const track: number[] = [];
+  let trackNow = 0;
+  for (let i = -PATH_SAMPLES / 2; i <= PATH_SAMPLES; i++) {
+    const date = new Date(time + i * step);
+    const state = placeAt(rec, date);
+    if (!state) continue;
+    if (i <= 0) trackNow = track.length / 3;
+    // Latitude and longitude on the Earth, in the axes of the turning globe
+    const { latitude, longitude } = eciToGeodetic(state.position, gstime(date));
+    const c = Math.cos(latitude) * TRACK_RADIUS;
+    track.push(c * Math.cos(longitude), Math.sin(latitude) * TRACK_RADIUS, -c * Math.sin(longitude));
+  }
+  return { orbit: new Float32Array(orbit), track: new Float32Array(track), trackNow };
+}
+
+function describe({ id, slot, time, paths }: DescribeRequest) {
+  const rec = recs[slot];
+  const info = objects[slot];
+  if (!rec || !info) return;
+  const brightness = estimateBrightness(info.type, rcsTable?.get(info.norad), info.sizeClass);
+  const traced = paths ? trace(rec, time) : null;
+  const message: DescribedMessage = {
+    type: 'described',
+    id,
+    details: {
+      norad: info.norad,
+      name: info.name,
+      cospar: info.cospar,
+      type: info.type,
+      station: (info.lists & STATION) !== 0,
+      country: info.country,
+      launchDate: info.launchDate,
+      site: siteOf.get(info.norad) ?? '',
+      epoch: info.epoch,
+      magnitude: brightness.magnitude,
+      giant: brightness.giant,
+      working: info.type === 'payload' && operational ? operational.has(info.norad) : null,
+      orbit: orbitNumbers(rec),
+    },
+    now: whereabouts(rec, time),
+    paths: traced,
+  };
+  scope.postMessage(message, traced ? [traced.orbit.buffer, traced.track.buffer] : []);
+}
+
+function find(id: number, norad: number) {
+  const slot = slotOf.get(norad);
+  const info = slot === undefined ? undefined : objects[slot];
+  const message: FoundMessage = {
+    type: 'found',
+    id,
+    candidate: info ? { slot: slot!, norad, name: info.name, type: info.type, station: (info.lists & STATION) !== 0, distance: 0 } : null,
+  };
+  scope.postMessage(message);
+}
+
 function load() {
   loading ??= loadCatalogue().finally(() => (loading = null));
 }
@@ -339,6 +453,8 @@ scope.onmessage = (event: MessageEvent<CatalogRequest>) => {
   }
   if (request.type === 'retry') return load();
   if (request.type === 'pick') return pick(request);
+  if (request.type === 'describe') return describe(request);
+  if (request.type === 'find') return find(request.id, request.norad);
   anchorAll(request.time);
   emit(true);
 };
