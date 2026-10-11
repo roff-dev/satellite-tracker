@@ -76,7 +76,7 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
   if (start.time !== undefined) clock.set(start.time);
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const globe = createGlobe(host);
-  const satellites = createSatellites(reducedMotion);
+  const satellites = createSatellites(reducedMotion, globe.quality.trails);
   globe.inertial.add(satellites.points, satellites.glowPoints, satellites.trailLines);
 
   let status: CatalogStatus = { count: 0, positioned: 0, sunlit: 0, unlaunched: 0, unplaceable: 0, live: 0, done: false, failed: [], fetchedAt: null, stale: false, unreachable: false, retryAt: null };

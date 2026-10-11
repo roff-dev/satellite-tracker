@@ -12,6 +12,9 @@ import {
 } from 'three';
 import { STRIDE } from '../orbit/elements';
 import { KEY_GLSL, KEY_UNIFORMS_GLSL, ORBIT_GLSL } from './orbit.glsl';
+import type { QualitySettings } from './quality';
+
+type TrailDetail = QualitySettings['trails'];
 
 const vertexShader = /* glsl */ `
   #include <common>
@@ -94,17 +97,18 @@ function template(samples: number) {
 /**
  * Motion trails: the same element buffer drawn a second time as short tails, every object evaluated at a few
  * moments behind where it is now. Pure GPU work; only shown at 60× and faster.
+ * Starts at the device's level of detail, so the shader compiled at startup is the one that draws.
  */
-export function createTrails(shared: Record<string, IUniform>) {
+export function createTrails(shared: Record<string, IUniform>, detail: TrailDetail) {
   const uniforms = { ...shared, uSpeed: { value: 0 }, uTrail: { value: 0 } };
-  let samples = 8;
-  let payloadsOnly = false;
+  let { samples, payloadsOnly } = detail;
+  const defines = () => ({ SAMPLES: samples.toFixed(1), ...(payloadsOnly ? { PAYLOADS_ONLY: '' } : {}) });
   const material = new ShaderMaterial({
     glslVersion: GLSL3,
     vertexShader,
     fragmentShader,
     uniforms,
-    defines: { SAMPLES: '8.0' },
+    defines: defines(),
     blending: AdditiveBlending,
     transparent: true,
     depthWrite: false,
@@ -145,7 +149,7 @@ export function createTrails(shared: Record<string, IUniform>) {
       if (nextSamples === samples && nextPayloadsOnly === payloadsOnly) return;
       samples = nextSamples;
       payloadsOnly = nextPayloadsOnly;
-      material.defines = { SAMPLES: samples.toFixed(1), ...(payloadsOnly ? { PAYLOADS_ONLY: '' } : {}) };
+      material.defines = defines();
       material.needsUpdate = true;
       geometry.setAttribute('position', template(samples));
     },

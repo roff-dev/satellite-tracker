@@ -15,6 +15,7 @@ import { STRIDE, keplerPosition } from '../orbit/elements';
 import { GLOW_LAYER } from './glow';
 import { KEY_GLSL, KEY_UNIFORMS_GLSL, ORBIT_GLSL } from './orbit.glsl';
 import { createTrails } from './trails';
+import type { QualitySettings } from './quality';
 import type { ElementsMessage } from '../data/protocol';
 
 const vertexShader = /* glsl */ `
@@ -153,7 +154,7 @@ function token(name: string) {
   return new Color(getComputedStyle(document.documentElement).getPropertyValue(name).trim());
 }
 
-export function createSatellites(reducedMotion: boolean) {
+export function createSatellites(reducedMotion: boolean, trailDetail: QualitySettings['trails']) {
   const uniforms = {
     uDt: { value: 0 },
     uDay: { value: 0 },
@@ -199,7 +200,7 @@ export function createSatellites(reducedMotion: boolean) {
   const glowPixelRatio = { value: 1 };
   glowMaterial.uniforms = { ...uniforms, uPixelRatio: glowPixelRatio };
   glowMaterial.defines = { GLOW: '' };
-  const trails = createTrails(uniforms);
+  const trails = createTrails(uniforms, trailDetail);
   /** How far the trails have faded in, 0 to 1. */
   let trailStrength = 0;
   let lastUpdate = performance.now();
