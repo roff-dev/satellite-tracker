@@ -7,7 +7,7 @@ import { createAtmosphere } from './atmosphere';
 import { createStars } from './stars';
 import { createCamera, timezoneLongitude } from './camera';
 import { createFpsProbe, initialTier, settingsFor, type QualitySettings, type Tier } from './quality';
-import { GLOW_LAYER, GlowEffect, compilePasses } from './glow';
+import { GlowEffect, compilePasses } from './glow';
 
 export interface Globe {
   scene: Scene;
@@ -150,14 +150,11 @@ export function createGlobe(host: HTMLElement): Globe {
 
   // Shaders link in the background where the driver allows it, so the page stays responsive meanwhile
   const ready = earth.ready.then(async () => {
-    // Every layer, so the glow copies are ready too
-    const layers = view.camera.layers.mask;
-    view.camera.layers.enable(GLOW_LAYER);
-    // Compiled for the buffer they'll draw into, so nothing compiles again on the first frame
+    // Every material in the scene, hidden ones and the glow copies included, compiled for the buffer it'll draw
+    // into, so nothing compiles again on the first frame
     renderer.setRenderTarget(composer ? composer.inputBuffer : null);
     await renderer.compileAsync(scene, view.camera);
     renderer.setRenderTarget(null);
-    view.camera.layers.mask = layers;
     if (composer && glow && effectPass) await compilePasses(renderer, view.camera, glow.blurMaterials, [effectPass.fullscreenMaterial], composer.inputBuffer);
     view.arrive(timezoneLongitude(), gmst(clock.time));
     requestAnimationFrame(frame);

@@ -83,6 +83,9 @@ export interface FollowHost {
 export function createFollow(host: FollowHost) {
   const { camera, inertial, sun } = host;
   const light = new DirectionalLight(0xffffff, 0);
+  // Seen by every pass, the glow pass too: a different light count keys a different program, so the glow shaders
+  // compiled at startup would otherwise link again on the first frame
+  light.layers.enableAll();
   // Earthshine, blue-tinted, so the side away from the Sun isn't black
   const ambient = new AmbientLight(new Color('#8db8f2'), 0);
   inertial.add(light, light.target, ambient);
