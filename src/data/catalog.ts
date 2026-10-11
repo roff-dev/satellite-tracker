@@ -1,4 +1,4 @@
-import type { Candidate, CatalogEvent, CatalogRequest, DescribedMessage, ElementsMessage, PickRequest, ProgressMessage } from './protocol';
+import type { Candidate, CatalogEvent, CatalogRequest, CountedMessage, DescribedMessage, ElementsMessage, PickRequest, ProgressMessage, SearchResult, SearchedMessage } from './protocol';
 
 type Reply = Extract<CatalogEvent, { id: number }>;
 /** A request that expects a reply, before its id is attached. */
@@ -89,6 +89,18 @@ export function connectCatalog(startTime: number, handlers: CatalogHandlers) {
     async find(norad: number): Promise<Candidate | null> {
       const reply = await ask<Extract<Reply, { type: 'found' }>>({ type: 'find', norad });
       return reply.candidate;
+    },
+    /** Objects matching a name, catalogue number or international designator, best first. */
+    async search(query: string): Promise<SearchResult[]> {
+      return (await ask<SearchedMessage>({ type: 'search', query })).results;
+    },
+    /** How many members of a group (a filter code) have a position now. */
+    async count(filter: number): Promise<number> {
+      return (await ask<CountedMessage>({ type: 'count', filter })).count;
+    },
+    /** Mark every object from one launch, or none; resolves with how many there are. */
+    async highlight(launch: string | null): Promise<number> {
+      return (await ask<CountedMessage>({ type: 'highlight', launch })).count;
     },
     /** Fetch again whatever failed to load. */
     retry() {

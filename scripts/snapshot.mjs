@@ -5,7 +5,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 
 const origin = process.env.SNAPSHOT_ORIGIN?.replace(/\/$/, '');
-const DATASETS = ['bright', 'payloads', 'debris', 'satcat'];
+const DATASETS = ['bright', 'payloads', 'debris', 'satcat', 'groups'];
 
 if (!origin) {
   console.log('snapshot: SNAPSHOT_ORIGIN is not set, so no snapshot this build');

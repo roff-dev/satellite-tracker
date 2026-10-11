@@ -24,11 +24,14 @@ import {
   type PickRequest,
   type PickedMessage,
   type ProgressMessage,
+  type SearchResult,
   type Whereabouts,
 } from '../data/protocol';
+import { CONSTELLATIONS, FILTER, GEO_BIT, HIGHLIGHT_BIT, LISTED, STATION_BIT, launchOf } from '../data/groups';
+import { createSearch } from '../data/search';
 import { orbitNumbers } from '../orbit/describe';
 import { STATION, VISUAL, findNearby } from '../data/pick';
-import { GLINT, KIND, LAUNCH_DAY, STRIDE, writeElements } from '../orbit/elements';
+import { GLINT, GROUPS, KIND, LAUNCH_DAY, STRIDE, writeElements } from '../orbit/elements';
 import { decodeRcsTable, estimateBrightness, glintIntensity, type ObjectType } from '../orbit/brightness';
 
 const scope = self as unknown as DedicatedWorkerGlobalScope;
@@ -50,6 +53,8 @@ interface ObjectInfo {
   cospar: string;
   country: string;
   launchDate: string;
+  /** Bits for the groups it belongs to (see groups.ts). */
+  groups: number;
 }
 
 const recs: SatRec[] = [];
@@ -66,6 +71,11 @@ let rcsTable: Map<number, number> | null = null;
 let operational: Set<number> | null = null;
 /** Launch site codes, from the catalogue of working satellites. */
 const siteOf = new Map<number, string>();
+/** Group bits from CelesTrak's lists, by catalogue number, once they've loaded. */
+const listedBits = new Map<number, number>();
+/** The launch whose objects are highlighted (2026-045), or null. */
+let highlighted: string | null = null;
+const search = createSearch(objects);
 let bulk: Awaited<ReturnType<typeof createBulk>> | null = null;
 let bulkStale = true;
 
@@ -111,6 +121,16 @@ function writeStatic(slot: number) {
   master[o + KIND] = kind;
   master[o + GLINT] = glintIntensity(estimateBrightness(info.type, rcsTable?.get(info.norad), info.sizeClass));
   master[o + LAUNCH_DAY] = info.launchDay;
+  const lit = highlighted !== null && launchOf(info.cospar) === highlighted ? 1 << HIGHLIGHT_BIT : 0;
+  master[o + GROUPS] = info.groups | (listedBits.get(info.norad) ?? 0) | lit;
+}
+
+/** Groups known from the object itself: its name, the lists it came in on, and its orbit. */
+function ownGroups(info: ObjectInfo, rec: SatRec) {
+  let bits = info.lists & STATION ? 1 << STATION_BIT : 0;
+  for (const [prefix, bit] of CONSTELLATIONS) if (info.name.startsWith(prefix)) bits |= 1 << bit;
+  if (orbitNumbers(rec).orbitClass === 'geo') bits |= 1 << GEO_BIT;
+  return bits;
 }
 
 function store(slot: number, position: ArrayLike<number> | null, velocity: ArrayLike<number> | null, i: number) {
@@ -211,6 +231,7 @@ function addRow(row: Row, section: string) {
       cospar: row.OBJECT_ID ?? '',
       country: row.COUNTRY_CODE ?? '',
       launchDate: row.LAUNCH_DATE ?? '',
+      groups: 0,
     });
   } else {
     // The same object from another source: take its type and size, and its orbit if newer
@@ -229,6 +250,7 @@ function addRow(row: Row, section: string) {
     }
   }
   bulkStale = true;
+  objects[slot]!.groups = ownGroups(objects[slot]!, recs[slot]!);
   writeStatic(slot);
   anchorOne(slot, new Date(anchorTime));
 }
@@ -338,6 +360,24 @@ async function loadCatalogue() {
   } catch {
     // Every payload stays drawn as active
   }
+
+  // Navigation, weather and science satellites, from CelesTrak's lists
+  if (listedBits.size) return;
+  try {
+    const { response } = await fetchData('groups');
+    await readCsv(
+      response.body!,
+      new CsvReader((row, section) => {
+        const bit = LISTED[section];
+        const norad = Number(row.NORAD_CAT_ID);
+        if (bit !== undefined && norad) listedBits.set(norad, (listedBits.get(norad) ?? 0) | (1 << bit));
+      }),
+    );
+    for (let slot = 0; slot < recs.length; slot++) writeStatic(slot);
+    emit(false);
+  } catch {
+    // Those groups just come up empty
+  }
 }
 
 function pick({ id, ...request }: PickRequest) {
@@ -426,8 +466,11 @@ function describe({ id, slot, time, paths }: DescribeRequest) {
     },
     now: whereabouts(rec, time),
     paths: traced,
+    train: train(slot, time),
   };
-  scope.postMessage(message, traced ? [traced.orbit.buffer, traced.track.buffer] : []);
+  const transfer: Transferable[] = traced ? [traced.orbit.buffer, traced.track.buffer] : [];
+  if (message.train) transfer.push(message.train.buffer);
+  scope.postMessage(message, transfer);
 }
 
 function find(id: number, norad: number) {
@@ -439,6 +482,77 @@ function find(id: number, norad: number) {
     candidate: info ? { slot: slot!, norad, name: info.name, type: info.type, station: (info.lists & STATION) !== 0, distance: 0 } : null,
   };
   scope.postMessage(message);
+}
+
+function searchFor(id: number, query: string) {
+  const results: SearchResult[] = search(query).map((slot) => {
+    const info = objects[slot]!;
+    return {
+      slot,
+      norad: info.norad,
+      name: info.name,
+      type: info.type,
+      station: (info.lists & STATION) !== 0,
+      distance: 0,
+      cospar: info.cospar,
+      country: info.country,
+      orbitClass: orbitNumbers(recs[slot]!).orbitClass,
+    };
+  });
+  scope.postMessage({ type: 'searched', id, results });
+}
+
+/** Members of a group, by the same rules the shader uses. */
+function isMember(slot: number, filter: number, day: number) {
+  const o = slot * STRIDE;
+  if (filter === FILTER.recent) return day - master[o + LAUNCH_DAY]! <= 30 && master[o + LAUNCH_DAY]! <= day;
+  if (filter === FILTER.brightest) return master[o + GLINT]! >= 10 ** 0.6;
+  if (filter === FILTER.debris) return master[o + KIND]! >= Kind.Rocket;
+  return (master[o + GROUPS]! & (1 << filter)) !== 0;
+}
+
+/** How many members of a group have a position at the anchor time. */
+function countMembers(filter: number) {
+  const day = anchorTime / DAY_MS;
+  let count = 0;
+  for (let slot = 0; slot < recs.length; slot++) {
+    if (master[slot * STRIDE]! > 0 && objects[slot]!.launchDay <= day && isMember(slot, filter, day)) count++;
+  }
+  return count;
+}
+
+function highlight(id: number, launch: string | null) {
+  highlighted = launch;
+  for (let slot = 0; slot < recs.length; slot++) writeStatic(slot);
+  emit(false);
+  scope.postMessage({ type: 'counted', id, count: launch ? countMembers(HIGHLIGHT_BIT) : 0 });
+}
+
+/** The highlighted launch group at a moment, strung in order along the orbit of the selected object. */
+function train(slot: number, time: number) {
+  if (highlighted === null) return null;
+  const date = new Date(time);
+  const centre = placeAt(recs[slot]!, date);
+  if (!centre) return null;
+  const { position: r0, velocity: v0 } = centre;
+  // In-plane axes of the selected object's orbit: towards it, and ahead of it
+  const n0 = Math.hypot(r0.x, r0.y, r0.z);
+  const px = r0.x / n0, py = r0.y / n0, pz = r0.z / n0;
+  const hx = r0.y * v0.z - r0.z * v0.y, hy = r0.z * v0.x - r0.x * v0.z, hz = r0.x * v0.y - r0.y * v0.x;
+  const qx = hy * pz - hz * py, qy = hz * px - hx * pz, qz = hx * py - hy * px;
+  const members: { angle: number; x: number; y: number; z: number }[] = [];
+  for (let other = 0; other < recs.length; other++) {
+    if (launchOf(objects[other]!.cospar) !== highlighted) continue;
+    const state = placeAt(recs[other]!, date);
+    if (!state) continue;
+    const { x, y, z } = state.position;
+    members.push({ angle: Math.atan2(x * qx + y * qy + z * qz, x * px + y * py + z * pz), x, y, z });
+  }
+  if (members.length < 2) return null;
+  members.sort((a, b) => a.angle - b.angle);
+  const points = new Float32Array(members.length * 3);
+  members.forEach(({ x, y, z }, i) => points.set([x / EARTH_RADIUS_KM, z / EARTH_RADIUS_KM, -y / EARTH_RADIUS_KM], i * 3));
+  return points;
 }
 
 function load() {
@@ -455,6 +569,9 @@ scope.onmessage = (event: MessageEvent<CatalogRequest>) => {
   if (request.type === 'pick') return pick(request);
   if (request.type === 'describe') return describe(request);
   if (request.type === 'find') return find(request.id, request.norad);
+  if (request.type === 'search') return searchFor(request.id, request.query);
+  if (request.type === 'count') return scope.postMessage({ type: 'counted', id: request.id, count: countMembers(request.filter) });
+  if (request.type === 'highlight') return highlight(request.id, request.launch);
   anchorAll(request.time);
   emit(true);
 };

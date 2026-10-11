@@ -1,5 +1,5 @@
 import type { ObjectType } from '../orbit/brightness';
-import type { OrbitNumbers } from '../orbit/describe';
+import type { OrbitClass, OrbitNumbers } from '../orbit/describe';
 
 /** Object kinds as stored in the element buffer and read by the shader. */
 export const Kind = { Active: 0, Dead: 1, Rocket: 2, Debris: 3 } as const;
@@ -16,7 +16,19 @@ export type CatalogRequest =
   | PickRequest
   | DescribeRequest
   /** Look an object up by its catalogue number, for links that name one. */
-  | { type: 'find'; id: number; norad: number };
+  | { type: 'find'; id: number; norad: number }
+  /** Objects whose name, catalogue number or international designator matches, best first. */
+  | { type: 'search'; id: number; query: string }
+  /** How many objects in a group have a position at the anchor time. */
+  | { type: 'count'; id: number; filter: number }
+  /** Mark every object from one launch (2026-045), or none. */
+  | { type: 'highlight'; id: number; launch: string | null };
+
+export interface SearchResult extends Candidate {
+  cospar: string;
+  country: string;
+  orbitClass: OrbitClass;
+}
 
 /** Everything the panel shows about one object, at one moment. */
 export interface DescribeRequest {
@@ -72,6 +84,20 @@ export interface DescribedMessage {
     /** Index of the track point nearest the moment asked: before it is the past. */
     trackNow: number;
   } | null;
+  /** The highlighted launch group strung together in order along the orbit, when one is highlighted. */
+  train: Float32Array | null;
+}
+
+export interface SearchedMessage {
+  type: 'searched';
+  id: number;
+  results: SearchResult[];
+}
+
+export interface CountedMessage {
+  type: 'counted';
+  id: number;
+  count: number;
 }
 
 export interface FoundMessage {
@@ -143,4 +169,4 @@ export interface ProgressMessage {
   done: boolean;
 }
 
-export type CatalogEvent = ElementsMessage | ProgressMessage | PickedMessage | DescribedMessage | FoundMessage;
+export type CatalogEvent = ElementsMessage | ProgressMessage | PickedMessage | DescribedMessage | FoundMessage | SearchedMessage | CountedMessage;
