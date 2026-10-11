@@ -42,8 +42,7 @@
 
   .figure {
     font-family: var(--font-data);
-    /* Mono figures run large beside the sans; this matches them optically */
-    font-size: 0.92em;
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
     color: var(--ink);
   }

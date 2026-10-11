@@ -28,7 +28,7 @@
     left: var(--gutter);
     bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
     margin: 0;
-    font: italic 400 1.0625rem / 1 var(--font-display);
+    font: 450 0.9375rem / 1 var(--font-data);
     color: var(--muted);
     font-variant-numeric: tabular-nums;
   }

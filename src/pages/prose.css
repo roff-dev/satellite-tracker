@@ -5,22 +5,20 @@
 }
 
 .page .back {
-  display: inline-block;
   margin-bottom: var(--space-16);
-  font: italic 400 1.375rem / 1 var(--font-display);
-  text-decoration: none;
-  color: var(--ink);
 }
 
 .page h1 {
   margin: 0 0 var(--space-8);
-  font: 400 var(--size-display) / 1.02 var(--font-display);
+  font: 650 var(--size-display) / 0.98 var(--font-display);
+  letter-spacing: -0.035em;
   text-wrap: balance;
 }
 
 .page h2 {
   margin: var(--space-12) 0 var(--space-3);
-  font: 400 var(--size-title) / 1.15 var(--font-display);
+  font: 600 var(--size-title) / 1.15 var(--font-display);
+  letter-spacing: -0.02em;
 }
 
 .page p,
@@ -47,13 +45,34 @@
   align-content: center;
 }
 
+/* A facet-cut button: two flat tones split on the diagonal, as if lit from the upper left */
 .page .button {
-  display: inline-block;
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   margin-top: var(--space-6);
-  padding: var(--space-3) var(--space-6);
-  border-radius: 999px;
-  background: var(--glint);
+  padding: 0 var(--space-6);
   color: var(--void);
-  font-weight: 600;
+  font-weight: 650;
   text-decoration: none;
+}
+
+.page .button::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(155deg, color-mix(in oklab, var(--glint), white 22%) 0 48%, var(--glint) 48% 100%);
+  clip-path: var(--facet-cut);
+  transition: filter 0.2s;
+}
+
+.page .button:hover::before {
+  filter: brightness(1.08);
+}
+
+.page .button:active::before {
+  filter: brightness(0.94);
 }

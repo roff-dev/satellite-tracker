@@ -43,6 +43,7 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
   let rest = 3.6;
   let aspect = 1;
   let shortScreen = false;
+  let portraitDrop = 0.2;
 
   /** Distance at which the globe fills FILL of the narrower screen dimension. */
   const restDistance = () => {
@@ -56,7 +57,8 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
     const halfHeight = distance * Math.tan(MathUtils.degToRad(camera.fov) / 2);
     // A phone on its side has the headline beside the globe, so the globe moves further over
     const x = aspect > 1.2 ? -(shortScreen ? 0.36 : 0.18) * halfHeight * aspect : 0;
-    const y = aspect < 0.8 ? -0.2 * halfHeight : 0;
+    // Short portrait screens fit the headline in less height, so the globe sits a little lower to clear it
+    const y = aspect < 0.8 ? -portraitDrop * halfHeight : 0;
     void controls.setFocalOffset(x, y, 0, transition);
   };
   let arriving = false;
@@ -138,6 +140,7 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
     resize(width: number, height: number) {
       aspect = width / height;
       shortScreen = height < 500;
+      portraitDrop = height <= 700 ? 0.34 : height <= 820 ? 0.27 : 0.2;
       camera.aspect = aspect;
       camera.updateProjectionMatrix();
       rest = restDistance();

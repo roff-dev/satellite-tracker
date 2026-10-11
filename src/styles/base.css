@@ -25,9 +25,26 @@ a {
 }
 
 :focus-visible {
-  outline: none;
-  box-shadow: var(--focus);
-  border-radius: 4px;
+  outline: 2px solid var(--glint);
+  outline-offset: 3px;
+}
+
+/* The wordmark: the faceted globe, then the name */
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  font: 700 1.25rem / 1 var(--font-display);
+  letter-spacing: -0.015em;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.wordmark::before {
+  content: '';
+  width: 1.2em;
+  height: 1.2em;
+  background: url(/favicon.svg) center / contain no-repeat;
 }
 
 .data {
