@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "svelte-check --fail-on-warnings && tsc -p worker && vite build",
+    "build": "svelte-check --fail-on-warnings && tsc -p worker && vite build && node scripts/snapshot.mjs",
     "preview": "wrangler dev",
     "deploy": "wrangler deploy"
   },
