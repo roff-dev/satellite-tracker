@@ -7,6 +7,9 @@
   import ObjectPanel from './components/ObjectPanel.svelte';
   import HoverLabel from './components/HoverLabel.svelte';
   import FollowBar from './components/FollowBar.svelte';
+  import TopBar from './components/TopBar.svelte';
+  import { view } from './view.svelte';
+  import { GROUPS } from '../data/groups';
 
   const DAY_MS = 86_400_000;
 
@@ -50,13 +53,52 @@
       selection.close = app.deselect;
       selection.follow = app.follow;
       selection.stopFollowing = app.stopFollowing;
+      view.search = app.search;
+      view.selectFound = (candidate) => {
+        app.selectFound(candidate);
+        document.documentElement.classList.add('exploring');
+      };
+      view.isConstellation = app.isConstellation;
+      view.setColourBy = (mode) => {
+        view.colourBy = mode;
+        app.setColourBy(mode);
+      };
+      view.setDebrisShown = (shown) => {
+        view.debrisShown = shown;
+        app.setDebrisShown(shown);
+      };
+      // Counts come back from the worker; a slower answer for a group no longer chosen is dropped
+      view.setGroup = (slug) => {
+        view.group = slug;
+        // The chip takes the headline's place
+        if (slug) document.documentElement.classList.add('exploring');
+        void app.setGroup(slug).then((count) => {
+          if (view.group === slug) view.groupCount = count;
+        });
+      };
+      view.showLaunch = (on, cospar) => {
+        view.launchCount = on ? 0 : null;
+        void app.showLaunch(on, cospar).then((count) => {
+          if (view.launchCount !== null) view.launchCount = count;
+        });
+      };
       // Created after the async import, so it needs its own root, cleaned up with the globe
       const stopInsets = $effect.root(() => {
         $effect(() => app.setInsets(selection.insets.right, selection.insets.bottom));
       });
       app.globe.onInteract(() => document.documentElement.classList.add('exploring'));
       void app.globe.ready.then(() => (visible = true));
+      // A shared link can also pick out a group (?group=starlink), once the catalogue is in
+      const linkedGroup = new URLSearchParams(location.search).get('group');
+      const stopReady = $effect.root(() => {
+        $effect(() => {
+          if (!catalog.status?.done || view.ready) return;
+          view.ready = true;
+          if (linkedGroup && GROUPS.some((g) => g.slug === linkedGroup)) view.setGroup(linkedGroup);
+        });
+      });
       dispose = () => {
+        stopReady();
         stopInsets();
         app.dispose();
       };
@@ -65,6 +107,8 @@
   });
 </script>
 
+<!-- Search and view come first in the tab order, then the globe -->
+<TopBar />
 <div class="globe" class:visible bind:this={host}></div>
 
 <Logbook />

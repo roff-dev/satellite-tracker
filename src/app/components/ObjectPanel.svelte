@@ -4,6 +4,8 @@
   import { selection } from '../selection.svelte';
   import { clock } from '../../time/clock';
   import { accuracyGrade, type Grade, type OrbitClass } from '../../orbit/describe';
+  import { view } from '../view.svelte';
+  import { loadNames, names as shared } from '../names.svelte';
 
   const KIND = { payload: 'Satellite', rocket: 'Rocket body', debris: 'Debris' } as const;
   const CLASS: Record<OrbitClass, string> = {
@@ -32,17 +34,7 @@
     return relative.format(-Math.round(minutes / 1440), 'day');
   }
 
-  // Owner and launch-site names, loaded once on first use
-  let names = $state<{ owners: Record<string, string>; sites: Record<string, string> } | null>(null);
-  let namesRequested = false;
-  function loadNames() {
-    if (namesRequested) return;
-    namesRequested = true;
-    fetch('/owners.json')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((table) => (names = table))
-      .catch(() => undefined);
-  }
+  const names = $derived(shared.table);
 
   const current = $derived(selection.current);
   const selected = $derived(current ? current.candidates[current.index]! : null);
@@ -68,7 +60,7 @@
     announcement = now ? `${details.name} selected, altitude ${number.format(now.altitudeKm)} kilometres` : `${details.name} selected`;
   });
 
-  let shared = $state(false);
+  let copied = $state(false);
   async function share(name: string, norad: number) {
     const url = new URL('/', location.origin);
     url.searchParams.set('sat', String(norad));
@@ -80,8 +72,8 @@
       return;
     }
     await navigator.clipboard.writeText(link).catch(() => undefined);
-    shared = true;
-    setTimeout(() => (shared = false), 2000);
+    copied = true;
+    setTimeout(() => (copied = false), 2000);
   }
 
   // On a phone held upright the panel is a bottom sheet with three resting heights
@@ -106,6 +98,14 @@
       query.removeEventListener('change', update);
       removeEventListener('resize', update);
     };
+  });
+
+  // A launch group belongs to the object it was shown for: any change of selection clears it
+  let shownFor = -1;
+  $effect(() => {
+    const norad = selected?.norad ?? -1;
+    if (norad !== shownFor) view.launchCount = null;
+    shownFor = norad;
   });
 
   // A new selection opens the sheet halfway; swapping between nearby objects keeps its height
@@ -269,11 +269,19 @@
 
         <div class="actions">
           <button class="button" type="button" onclick={() => selection.follow()} disabled={!now}>Follow</button>
-          <button class="chip" type="button" onclick={() => share(details.name, details.norad)}>{shared ? 'Link copied' : 'Share'}</button>
+          <button class="chip" type="button" onclick={() => share(details.name, details.norad)}>{copied ? 'Link copied' : 'Share'}</button>
+          {#if view.isConstellation(details.name) && details.cospar}
+            <button class="chip" type="button" aria-pressed={view.launchCount !== null} onclick={() => view.showLaunch(view.launchCount === null, details.cospar)}>
+              {view.launchCount === null ? 'Show its launch' : 'Show everything'}
+            </button>
+          {/if}
         </div>
+        {#if view.launchCount}
+          <p class="note launch">{number.format(view.launchCount)} objects from the same launch, joined in order along the orbit.</p>
+        {/if}
       {/if}
     </div>
-    <p class="visually-hidden" aria-live="polite">{announcement}{shared ? '. Link copied.' : ''}</p>
+    <p class="visually-hidden" aria-live="polite">{announcement}{copied ? '. Link copied.' : ''}</p>
   </aside>
 {/if}
 
@@ -282,12 +290,13 @@
   .panel {
     position: fixed;
     z-index: 3;
-    top: calc(var(--space-6) + env(safe-area-inset-top));
+    /* Below the search and view controls */
+    top: calc(var(--space-4) + env(safe-area-inset-top) + 44px + var(--space-6));
     right: var(--gutter);
     display: flex;
     flex-direction: column;
     width: min(380px, calc(100vw - 2 * var(--gutter)));
-    max-height: calc(100svh - 2 * var(--space-6) - 4rem);
+    max-height: calc(100svh - 44px - 3 * var(--space-6) - 4rem);
     padding: var(--space-6) var(--space-6) 0;
     isolation: isolate;
     background: linear-gradient(155deg, var(--raise) 0 18%, var(--deck) 18% 100%);
@@ -427,6 +436,10 @@
     color: var(--muted);
   }
 
+  .launch {
+    margin-top: var(--space-3);
+  }
+
   dl {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -541,6 +554,7 @@
 
   .actions {
     display: flex;
+    flex-wrap: wrap;
     gap: var(--space-3);
     padding-top: var(--space-4);
     border-top: 1px solid var(--line);
