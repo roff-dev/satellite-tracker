@@ -44,6 +44,9 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
   let aspect = 1;
   let shortScreen = false;
   let portraitDrop = 0.2;
+  let viewHeight = 1;
+  /** Screen space a panel covers, CSS px: the globe centres itself in what's left. */
+  let insets = { right: 0, bottom: 0 };
 
   /** Distance at which the globe fills FILL of the narrower screen dimension. */
   const restDistance = () => {
@@ -55,6 +58,12 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
   // Leave room for the headline: portrait screens push the globe down, wide screens push it right
   const applyFocalOffset = (distance: number, transition: boolean) => {
     const halfHeight = distance * Math.tan(MathUtils.degToRad(camera.fov) / 2);
+    if (insets.right || insets.bottom) {
+      // An open panel: centre the globe in the space beside or above it
+      const perPixel = (2 * halfHeight) / viewHeight;
+      void controls.setFocalOffset((insets.right / 2) * perPixel, (insets.bottom / 2) * perPixel, 0, transition);
+      return;
+    }
     // A phone on its side has the headline beside the globe, so the globe moves further over
     const x = aspect > 1.2 ? -(shortScreen ? 0.36 : 0.18) * halfHeight * aspect : 0;
     // Short portrait screens fit the headline in less height, so the globe sits a little lower to clear it
@@ -139,6 +148,7 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
     },
     resize(width: number, height: number) {
       aspect = width / height;
+      viewHeight = height;
       shortScreen = height < 500;
       portraitDrop = height <= 700 ? 0.34 : height <= 820 ? 0.27 : 0.2;
       camera.aspect = aspect;
@@ -148,6 +158,12 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
       applyFocalOffset(rest, false);
       // Rotating a phone before exploring re-frames the globe
       if (!interacted && controls.distance > 1.2) void controls.dollyTo(rest, false);
+    },
+    /** Panels covering the right or bottom of the screen (CSS px); 0 for none. The globe glides to the free space. */
+    setInsets(right: number, bottom: number) {
+      if (right === insets.right && bottom === insets.bottom) return;
+      insets = { right, bottom };
+      if (!arriving) applyFocalOffset(rest, true);
     },
     dispose() {
       controls.dispose();

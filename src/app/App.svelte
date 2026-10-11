@@ -3,6 +3,9 @@
   import { PROFILE_URL } from '../site';
   import Logbook from './components/Logbook.svelte';
   import { catalog } from './catalog.svelte';
+  import { selection } from './selection.svelte';
+  import ObjectPanel from './components/ObjectPanel.svelte';
+  import HoverLabel from './components/HoverLabel.svelte';
 
   let host: HTMLDivElement;
   let visible = $state(false);
@@ -10,13 +13,30 @@
   onMount(() => {
     let dispose = () => {};
     void import('../globe').then(({ startGlobe }) => {
-      const app = startGlobe(host, (status) => {
-        catalog.status = status;
+      const app = startGlobe(host, {
+        onStatus(status) {
+          catalog.status = status;
+        },
+        onSelection(current) {
+          selection.current = current;
+        },
+        onHover(hover) {
+          selection.hover = hover;
+        },
       });
       catalog.retry = app.retryNow;
+      selection.choose = app.choose;
+      selection.close = app.deselect;
+      // Created after the async import, so it needs its own root, cleaned up with the globe
+      const stopInsets = $effect.root(() => {
+        $effect(() => app.setInsets(selection.insets.right, selection.insets.bottom));
+      });
       app.globe.onInteract(() => document.documentElement.classList.add('exploring'));
       void app.globe.ready.then(() => (visible = true));
-      dispose = () => app.dispose();
+      dispose = () => {
+        stopInsets();
+        app.dispose();
+      };
     });
     return () => dispose();
   });
@@ -25,6 +45,9 @@
 <div class="globe" class:visible bind:this={host}></div>
 
 <Logbook />
+
+<ObjectPanel />
+<HoverLabel />
 
 <footer class="byline">
   Made by <a href={PROFILE_URL}>Kieron</a>
