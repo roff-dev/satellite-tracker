@@ -1,7 +1,8 @@
-import * as THREE from 'three';
+import { Box3, MathUtils, Matrix4, PerspectiveCamera, Quaternion, Raycaster, Sphere, Spherical, Vector2, Vector3, Vector4 } from 'three';
 import CameraControls from 'camera-controls';
 
-CameraControls.install({ THREE });
+// Only the classes camera-controls uses; handing it the whole namespace would defeat tree-shaking
+CameraControls.install({ THREE: { Box3, MathUtils, Matrix4, Quaternion, Raycaster, Sphere, Spherical, Vector2, Vector3, Vector4 } });
 
 const MIN_DISTANCE = 1.15;
 const MAX_DISTANCE = 14;
@@ -17,14 +18,14 @@ export function timezoneLongitude(now = new Date()) {
 }
 
 /** Scene-space direction of a point on the Earth's surface once the Earth has rotated by gmst. */
-export function surfaceDirection(latDeg: number, lonDeg: number, gmst: number, out = new THREE.Vector3()) {
-  const lat = THREE.MathUtils.degToRad(latDeg);
-  const lon = THREE.MathUtils.degToRad(lonDeg) + gmst;
+export function surfaceDirection(latDeg: number, lonDeg: number, gmst: number, out = new Vector3()) {
+  const lat = MathUtils.degToRad(latDeg);
+  const lon = MathUtils.degToRad(lonDeg) + gmst;
   return out.set(Math.cos(lat) * Math.cos(lon), Math.sin(lat), -Math.cos(lat) * Math.sin(lon));
 }
 
 export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
-  const camera = new THREE.PerspectiveCamera(36, 1, 0.01, 400);
+  const camera = new PerspectiveCamera(36, 1, 0.01, 400);
   const controls = new CameraControls(camera, dom);
   controls.minDistance = MIN_DISTANCE;
   controls.maxDistance = MAX_DISTANCE;
@@ -44,14 +45,14 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
 
   /** Distance at which the globe fills FILL of the narrower screen dimension. */
   const restDistance = () => {
-    const vertical = THREE.MathUtils.degToRad(camera.fov) / 2;
+    const vertical = MathUtils.degToRad(camera.fov) / 2;
     const horizontal = Math.atan(Math.tan(vertical) * aspect);
     return 1 / Math.sin(Math.min(vertical, horizontal) * FILL);
   };
 
   // Leave room for the headline: portrait screens push the globe down, wide screens push it right
   const applyFocalOffset = (distance: number, transition: boolean) => {
-    const halfHeight = distance * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+    const halfHeight = distance * Math.tan(MathUtils.degToRad(camera.fov) / 2);
     const x = aspect > 1.2 ? -0.18 * halfHeight * aspect : 0;
     const y = aspect < 0.8 ? -0.2 * halfHeight : 0;
     void controls.setFocalOffset(x, y, 0, transition);
@@ -69,12 +70,12 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
   // Rotation feels the same at every zoom: slower when close to the surface
   const scaleRotation = () => {
     const altitude = controls.distance - 1;
-    const speed = THREE.MathUtils.clamp(altitude / 2.2, 0.08, 1);
+    const speed = MathUtils.clamp(altitude / 2.2, 0.08, 1);
     controls.azimuthRotateSpeed = speed;
     controls.polarRotateSpeed = speed;
   };
 
-  const tmp = new THREE.Vector3();
+  const tmp = new Vector3();
 
   return {
     camera,
@@ -89,7 +90,7 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
     /** Places the camera far out over the given longitude, then glides in. */
     arrive(lonDeg: number, gmst: number) {
       rest = restDistance();
-      const end = surfaceDirection(22, lonDeg, gmst, new THREE.Vector3()).multiplyScalar(rest);
+      const end = surfaceDirection(22, lonDeg, gmst, new Vector3()).multiplyScalar(rest);
       applyFocalOffset(rest, false);
       if (reducedMotion) {
         void controls.setLookAt(end.x, end.y, end.z, 0, 0, 0, false);
@@ -110,11 +111,11 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
     },
     update(deltaSeconds: number) {
       scaleRotation();
-      if (!interacted && !reducedMotion) void controls.rotate(THREE.MathUtils.degToRad(0.4) * deltaSeconds, 0, false);
+      if (!interacted && !reducedMotion) void controls.rotate(MathUtils.degToRad(0.4) * deltaSeconds, 0, false);
       return controls.update(deltaSeconds);
     },
     keyboard(event: KeyboardEvent) {
-      const step = THREE.MathUtils.degToRad(5);
+      const step = MathUtils.degToRad(5);
       const actions: Record<string, () => void> = {
         ArrowLeft: () => void controls.rotate(-step, 0, true),
         ArrowRight: () => void controls.rotate(step, 0, true),
