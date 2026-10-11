@@ -30,6 +30,7 @@ const vertexShader = /* glsl */ `
   uniform float uSelected;
   uniform float uHovered;
   uniform float uHidden;
+  uniform float uSolo;
   uniform int uKinds;
   ${KEY_UNIFORMS_GLSL}
 
@@ -54,8 +55,8 @@ const vertexShader = /* glsl */ `
   void main() {
     float a = position.x;
     float e = position.y;
-    // No orbit (SGP4 failed) or not launched yet at this point in time
-    if (a <= 0.0 || uDay < aX.w || float(gl_VertexID) == uHidden) {
+    // No orbit (SGP4 failed), not launched yet at this point in time, or not the one object being shown alone
+    if (a <= 0.0 || uDay < aX.w || float(gl_VertexID) == uHidden || (uSolo > 0.5 && float(gl_VertexID) != uSelected)) {
       hide();
       return;
     }
@@ -172,6 +173,8 @@ export function createSatellites(reducedMotion: boolean, trailDetail: QualitySet
     uHovered: { value: -1 },
     // Not drawn as a point: the object being followed, when it has a model of its own
     uHidden: { value: -1 },
+    // 1 while only the selected object is shown
+    uSolo: { value: 0 },
     // A group's filter code, or -1 for everything
     uFilter: { value: -1 },
     // Kinds drawn, one bit per kind
@@ -260,6 +263,10 @@ export function createSatellites(reducedMotion: boolean, trailDetail: QualitySet
     },
     setHidden(slot: number) {
       uniforms.uHidden.value = slot;
+    },
+    /** Draw only the selected object, or everything again. */
+    setSolo(on: boolean) {
+      uniforms.uSolo.value = on ? 1 : 0;
     },
     /** Dim everything outside a group (its filter code), or -1 for none. */
     setFilter(filter: number) {

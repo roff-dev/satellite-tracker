@@ -159,6 +159,12 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
     follow.stop(performance.now());
   }
   let selection: Selection | null = null;
+  /** Everything but the selected object hidden, and taps finding only it. */
+  let solo = false;
+  function setSolo(on: boolean) {
+    solo = on && selection !== null;
+    satellites.setSolo(solo);
+  }
   let describeTimer: ReturnType<typeof setInterval> | undefined;
   /** When the drawn paths were traced, and how long one sample of them spans. */
   let traced: { slot: number; time: number; stepMs: number } | null = null;
@@ -184,8 +190,9 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
   }
 
   function select(next: Selection | null, fly = false) {
-    // Riding along ends when the object it was riding with is no longer the selection
+    // Riding along ends when the object it was riding with is no longer the selection, and so does showing it alone
     if (follow.following !== null) stopFollowing();
+    if (solo) setSolo(false);
     // A launch group belongs to the object it was shown for
     const previous = selection ? selection.candidates[selection.index]!.norad : null;
     const now = next ? next.candidates[next.index]!.norad : null;
@@ -204,9 +211,15 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
   const stopPicking = attachPicking(globe.canvas, globe.camera, () => clock.time, catalog.pick, {
     onTap(candidates) {
       if (follow.following !== null) return;
+      // Shown alone, the selected object is the only one there is to find: a tap on it changes nothing
+      if (solo) {
+        if (candidates.some((c) => c.slot === selectedSlot())) return;
+        candidates = [];
+      }
       select(candidates.length ? { candidates, index: 0 } : null);
     },
     onHover(candidate, x, y) {
+      if (solo && candidate && candidate.slot !== selectedSlot()) candidate = null;
       satellites.setHovered(candidate ? candidate.slot : -1);
       onHover(candidate ? { name: candidate.name, x, y } : null);
     },
@@ -250,6 +263,8 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
     },
     follow: startFollowing,
     stopFollowing,
+    /** Hide everything but the selected object, or bring it all back. */
+    setSolo,
     search: (query: string) => catalog.search(query),
     /** Select an object found some other way than tapping it, and turn to face it. */
     selectFound(candidate: Candidate) {

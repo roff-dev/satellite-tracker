@@ -20,7 +20,8 @@
 </script>
 
 <!-- The marks are the colour key when colouring by type, so switching a kind off and reading the key are one thing -->
-<fieldset class="types" class:keyed={view.colourBy === 'type'} class:tucked={selection.sheetOpen} disabled={!view.ready}>
+<!-- With one object shown alone, the kinds have nothing to switch -->
+<fieldset class="types" class:keyed={view.colourBy === 'type'} class:tucked={selection.sheetOpen} disabled={!view.ready || selection.solo}>
   <legend class="visually-hidden">Show</legend>
   {#each KINDS as { kind, label, short, colour } (kind)}
     {@const on = (view.kinds & (1 << kind)) !== 0}

@@ -43,6 +43,8 @@
         },
         onSelection(current) {
           selection.current = current;
+          // Showing only one object belongs to that object
+          selection.solo = false;
         },
         onDescribed(described) {
           selection.described = described;
@@ -59,6 +61,10 @@
       selection.close = app.deselect;
       selection.follow = app.follow;
       selection.stopFollowing = app.stopFollowing;
+      selection.setSolo = (on) => {
+        app.setSolo(on);
+        selection.solo = on;
+      };
       view.search = app.search;
       const explore = () => {
         app.globe.explore();

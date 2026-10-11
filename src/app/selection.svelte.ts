@@ -10,10 +10,13 @@ export const selection = $state<{
   following: string | null;
   /** The bottom sheet is open: the timeline docks to one row, and the group chip and kinds step aside. */
   sheetOpen: boolean;
+  /** Everything but the selected object is hidden; a new selection turns it off. */
+  solo: boolean;
+  setSolo: (on: boolean) => void;
   choose: (index: number) => void;
   close: () => void;
   follow: () => void;
   stopFollowing: () => void;
   /** Screen space the panel covers when at rest, CSS px. */
   insets: { right: number; bottom: number };
-}>({ current: null, described: null, hover: null, following: null, sheetOpen: false, choose: () => {}, close: () => {}, follow: () => {}, stopFollowing: () => {}, insets: { right: 0, bottom: 0 } });
+}>({ current: null, described: null, hover: null, following: null, sheetOpen: false, solo: false, setSolo: () => {}, choose: () => {}, close: () => {}, follow: () => {}, stopFollowing: () => {}, insets: { right: 0, bottom: 0 } });

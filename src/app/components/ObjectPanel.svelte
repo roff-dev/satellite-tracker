@@ -91,10 +91,10 @@
     setTimeout(() => (copied = false), 2000);
   }
 
-  // On a phone held upright the panel is a bottom sheet with three resting heights. It opens at the lowest, just
-  // tall enough for the header, so the object and its path stay in view; at its tallest it leaves the top bar and
-  // the docked timeline row above it clear
-  type Detent = 'peek' | 'half' | 'full';
+  // On a phone held upright the panel is a bottom sheet with two resting heights. It opens at the lower, just tall
+  // enough for the header, so the object and its path stay in view; fully open, it leaves the top bar and the docked
+  // timeline row above it clear
+  type Detent = 'peek' | 'full';
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   let sheet = $state(false);
   let viewport = $state(800);
@@ -103,7 +103,6 @@
   let safeBottom = $state(0);
   const heights = $derived({
     peek: Math.round(headerHeight + safeBottom) + 26,
-    half: Math.round(viewport * 0.5),
     full: Math.round(viewport - Math.max(view.topInset, 72) - view.timelineHeight - 20),
   });
   const height = new Spring(0, { stiffness: 0.15, damping: 0.8 });
@@ -169,13 +168,13 @@
   });
 
   // Tell the globe how much of the screen the panel takes, so it can move into the space that's left.
-  // A full-height sheet leaves nothing worth framing, so the globe stays where it was at half.
+  // A fully open sheet leaves nothing worth framing, so the globe stays where it sits above the lower height.
   let panel = $state<HTMLElement>();
   $effect(() => {
     if (!selected) {
       selection.insets = { right: 0, bottom: 0 };
     } else if (sheet) {
-      selection.insets = { right: 0, bottom: heights[detent === 'full' ? 'half' : detent] };
+      selection.insets = { right: 0, bottom: heights.peek };
     } else if (panel) {
       selection.insets = { right: innerWidth - panel.getBoundingClientRect().left, bottom: 0 };
     }
@@ -213,17 +212,16 @@
     const velocity = releaseSpeed(drag, event.timeStamp);
     const from = drag.from;
     drag = null;
-    // A flick moves one step from where the drag began: full to half, half or lower to closed
+    // A flick moves one step from where the drag began: up to fully open, down to the header, then away
     if (velocity < -FLICK) {
-      if (from !== 'full') return closeSheet();
-      detent = 'half';
+      if (from === 'peek') return closeSheet();
+      detent = 'peek';
     } else if (velocity > FLICK) {
-      detent = from === 'peek' ? 'half' : 'full';
+      detent = 'full';
     } else {
-      // Let go without a flick: it settles on the nearest step, or closes if lowered almost away
+      // Let go without a flick: it settles on the nearer height, or closes if lowered almost away
       if (height.current < heights.peek * 0.6) return closeSheet();
-      const order: Detent[] = ['peek', 'half', 'full'];
-      detent = order.reduce((best, d) => (Math.abs(heights[d] - height.current) < Math.abs(heights[best] - height.current) ? d : best), 'peek');
+      detent = height.current > (heights.peek + heights.full) / 2 ? 'full' : 'peek';
     }
     dragging = false;
     void height.set(heights[detent]);
@@ -299,7 +297,7 @@
           class="grip"
           type="button"
           aria-label={detent === 'full' ? 'Show less' : 'Show more'}
-          onclick={() => (detent = detent === 'half' ? 'full' : 'half')}
+          onclick={() => (detent = detent === 'full' ? 'peek' : 'full')}
           onpointerdown={(e) => e.stopPropagation()}
         ></button>
       {/if}
@@ -309,9 +307,24 @@
         <span>NORAD <span class="figure">{selected.norad}</span></span>
         {#if details?.cospar}<span>International <span class="figure">{details.cospar}</span></span>{/if}
       </p>
-      <button class="chip close" type="button" aria-label="Close" onclick={() => selection.close()} onpointerdown={(e) => e.stopPropagation()}>
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 2 14 13l-1 1L2 3zM13 2l1 1L3 14l-1-1z" fill="currentColor" /></svg>
-      </button>
+      <div class="corner">
+        <!-- Everything else drops away, so this one object can be watched on its own -->
+        <button
+          class="chip icon solo"
+          type="button"
+          aria-label="Show only this object"
+          aria-pressed={selection.solo}
+          title="Show only this object"
+          onclick={() => selection.setSolo(!selection.solo)}
+          onpointerdown={(e) => e.stopPropagation()}
+        >
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 2 22 12 12 22 2 12zm0 3.2L5.2 12l6.8 6.8 6.8-6.8z" fill="currentColor" fill-rule="evenodd" opacity="0.45" /><path d="M12 8.2 15.8 12 12 15.8 8.2 12z" fill="currentColor" /></svg>
+        </button>
+        <!-- Phones swipe the sheet away; the button stays for keyboards and screen readers, which can't -->
+        <button class="chip icon close" type="button" aria-label="Close" onclick={() => selection.close()} onpointerdown={(e) => e.stopPropagation()}>
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 2 14 13l-1 1L2 3zM13 2l1 1L3 14l-1-1z" fill="currentColor" /></svg>
+        </button>
+      </div>
     </header>
 
     <div class="body" bind:this={body}>
@@ -457,12 +470,13 @@
   header {
     position: relative;
     flex: none;
-    padding-right: 3.25rem;
+    padding-right: 6.5rem;
     touch-action: none;
   }
 
   .sheet header {
     padding-top: var(--space-4);
+    padding-right: 3.25rem;
     cursor: grab;
   }
 
@@ -532,17 +546,42 @@
     color: var(--ink);
   }
 
-  .close {
+  /* Show only this object, and on wide screens close */
+  .corner {
     position: absolute;
     top: 0;
     right: 0;
+    display: flex;
+    gap: var(--space-2);
+  }
+
+  .sheet .corner {
+    top: var(--space-3);
+  }
+
+  .icon {
     width: 44px;
     justify-content: center;
     padding: 0;
   }
 
-  .sheet .close {
-    top: var(--space-3);
+  /* On: the amber facet */
+  .solo[aria-pressed='true'] {
+    color: var(--void);
+  }
+
+  .solo[aria-pressed='true']::before {
+    background: linear-gradient(155deg, color-mix(in oklab, var(--glint), white 22%) 0 48%, var(--glint) 48% 100%);
+  }
+
+  /* Seen on a phone only when a keyboard reaches it */
+  .sheet .close:not(:focus-visible) {
+    position: absolute;
+    width: 1px;
+    min-height: 0;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
   }
 
   section {
