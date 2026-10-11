@@ -8,7 +8,8 @@ export const view = $state<{
   /** Members of the group with a position now. */
   groupCount: number;
   colourBy: ColourBy;
-  debrisShown: boolean;
+  /** Kinds shown, one bit per kind (working, inactive, rocket bodies, debris). */
+  kinds: number;
   /** Objects from the selected satellite's launch, while they're shown. */
   launchCount: number | null;
   /** Height of the timeline along the bottom, CSS px. */
@@ -17,7 +18,7 @@ export const view = $state<{
   explore: () => void;
   setGroup: (slug: string | null) => void;
   setColourBy: (mode: ColourBy) => void;
-  setDebrisShown: (shown: boolean) => void;
+  setKinds: (mask: number) => void;
   search: (query: string) => Promise<SearchResult[]>;
   selectFound: (candidate: Candidate) => void;
   showLaunch: (on: boolean, cospar?: string) => void;
@@ -27,13 +28,13 @@ export const view = $state<{
   group: null,
   groupCount: 0,
   colourBy: 'light',
-  debrisShown: true,
+  kinds: 0b1111,
   launchCount: null,
   timelineHeight: 0,
   explore: () => document.documentElement.classList.add('exploring'),
   setGroup: () => {},
   setColourBy: () => {},
-  setDebrisShown: () => {},
+  setKinds: () => {},
   search: async () => [],
   selectFound: () => {},
   showLaunch: () => {},

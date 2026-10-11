@@ -19,6 +19,8 @@ export interface CatalogStatus {
   unlaunched: number;
   unplaceable: number;
   live: number;
+  /** Positioned objects of each kind, indexed by Kind. */
+  kinds: number[];
   done: boolean;
   failed: Dataset[];
   fetchedAt: string | null;
@@ -81,7 +83,7 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
   const satellites = createSatellites(reducedMotion, globe.quality.trails);
   globe.inertial.add(satellites.points, satellites.glowPoints, satellites.trailLines);
 
-  let status: CatalogStatus = { count: 0, positioned: 0, sunlit: 0, unlaunched: 0, unplaceable: 0, live: 0, done: false, failed: [], fetchedAt: null, stale: false, unreachable: false, retryAt: null };
+  let status: CatalogStatus = { count: 0, positioned: 0, sunlit: 0, unlaunched: 0, unplaceable: 0, live: 0, kinds: [0, 0, 0, 0], done: false, failed: [], fetchedAt: null, stale: false, unreachable: false, retryAt: null };
   const update = (next: Partial<CatalogStatus>) => onStatus((status = { ...status, ...next }));
 
   let retries = 0;
@@ -102,8 +104,8 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
   const catalog = connectCatalog(clock.time, {
     onElements(message) {
       satellites.setElements(message);
-      const { count, positioned, sunlit, unlaunched, unplaceable, live } = message;
-      update({ count, positioned, sunlit, unlaunched, unplaceable, live });
+      const { count, positioned, sunlit, unlaunched, unplaceable, live, kinds } = message;
+      update({ count, positioned, sunlit, unlaunched, unplaceable, live, kinds });
     },
     onProgress({ count, done, failed, fetchedAt, stale }) {
       const unreachable = count === 0 && (done || status.unreachable);
@@ -263,8 +265,10 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
     setColourBy(mode: ColourBy) {
       satellites.setColourBy(COLOUR_BY[mode]);
     },
-    setDebrisShown(shown: boolean) {
-      satellites.setDebrisShown(shown);
+    /** Which kinds are drawn and can be tapped, one bit per kind. */
+    setKinds(mask: number) {
+      satellites.setKinds(mask);
+      catalog.setKinds(mask);
     },
     /** For a constellation satellite: show every object from its launch; resolves with how many. */
     showLaunch,

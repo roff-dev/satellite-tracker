@@ -76,9 +76,9 @@
         view.colourBy = mode;
         app.setColourBy(mode);
       };
-      view.setDebrisShown = (shown) => {
-        view.debrisShown = shown;
-        app.setDebrisShown(shown);
+      view.setKinds = (mask) => {
+        view.kinds = mask;
+        app.setKinds(mask);
       };
       // Counts come back from the worker; a slower answer for a group no longer chosen is dropped
       view.setGroup = (slug) => {

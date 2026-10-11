@@ -121,6 +121,10 @@ export function connectCatalog(startTime: number, handlers: CatalogHandlers) {
     retry() {
       send({ type: 'retry' });
     },
+    /** The kinds being shown, one bit per kind, so taps only find what's drawn. */
+    setKinds(mask: number) {
+      send({ type: 'kinds', mask });
+    },
     dispose() {
       clearTimeout(waiting);
       worker.terminate();

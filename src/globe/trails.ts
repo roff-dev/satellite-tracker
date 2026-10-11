@@ -22,7 +22,7 @@ const vertexShader = /* glsl */ `
 
   uniform float uDt;
   uniform vec3 uSun;
-  uniform float uDebrisShown;
+  uniform int uKinds;
   /** Sim seconds per real second, signed: the tail streams out behind the direction of play. */
   uniform float uSpeed;
   uniform float uTrail;
@@ -42,7 +42,7 @@ const vertexShader = /* glsl */ `
 
   void main() {
     int kind = int(aX.y + 0.5);
-    bool hidden = aOrbit.x <= 0.0 || uDay < aX.w || (kind >= 2 && uDebrisShown < 0.5);
+    bool hidden = aOrbit.x <= 0.0 || uDay < aX.w || ((uKinds >> kind) & 1) == 0;
     #ifdef PAYLOADS_ONLY
       hidden = hidden || kind >= 2;
     #endif

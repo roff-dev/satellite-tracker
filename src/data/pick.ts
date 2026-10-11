@@ -1,6 +1,6 @@
-import { STRIDE, keplerPosition } from '../orbit/elements';
+import { KIND, STRIDE, keplerPosition } from '../orbit/elements';
 import type { ObjectType } from '../orbit/brightness';
-import type { Candidate, PickRequest } from './protocol';
+import { ALL_KINDS, type Candidate, type PickRequest } from './protocol';
 
 /** Lists an object came in on, as bit flags. */
 export const STATION = 1;
@@ -21,8 +21,9 @@ const position = new Float64Array(3);
 
 /**
  * Screen-space nearest, using the shader's own orbit maths so a point is found exactly where it is drawn.
- * Objects behind the Earth don't count. Stations, the brightest and working objects get a few pixels' head
- * start, because at globe scale dozens of objects sit under a fingertip. Ties go to the nearer object.
+ * Objects behind the Earth don't count, nor do kinds that are switched off (`kinds`, one bit per kind). Stations,
+ * the brightest and working objects get a few pixels' head start, because at globe scale dozens of objects sit
+ * under a fingertip. Ties go to the nearer object.
  */
 export function findNearby(
   elements: Float32Array,
@@ -30,6 +31,7 @@ export function findNearby(
   anchorTime: number,
   { x, y, radius, width, height, viewProjection: m, camera, time }: Omit<PickRequest, 'type' | 'id'>,
   limit = 8,
+  kinds = ALL_KINDS,
 ): Candidate[] {
   const [cx, cy, cz] = camera;
   const outside = cx * cx + cy * cy + cz * cz - 1;
@@ -39,7 +41,7 @@ export function findNearby(
   for (let slot = 0; slot < objects.length; slot++) {
     const o = slot * STRIDE;
     const info = objects[slot]!;
-    if (!(elements[o]! > 0) || info.launchDay > day) continue;
+    if (!(elements[o]! > 0) || info.launchDay > day || !((kinds >> elements[o + KIND]!) & 1)) continue;
     keplerPosition(elements, o, dt, position);
     // TEME km to scene units: (x, z, −y)
     const px = position[0]! * KM, py = position[2]! * KM, pz = -position[1]! * KM;

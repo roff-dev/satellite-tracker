@@ -14,6 +14,7 @@ import {
 } from 'satellite.js';
 import { CsvReader, readCsv, type Row } from '../data/csv';
 import {
+  ALL_KINDS,
   Kind,
   type CatalogRequest,
   type DescribeRequest,
@@ -75,6 +76,8 @@ const siteOf = new Map<number, string>();
 const listedBits = new Map<number, number>();
 /** The launch whose objects are highlighted (2026-045), or null. */
 let highlighted: string | null = null;
+/** Kinds switched on, one bit per kind; the rest can't be picked. */
+let shownKinds: number = ALL_KINDS;
 const search = createSearch(objects);
 let bulk: Awaited<ReturnType<typeof createBulk>> | null = null;
 let bulkStale = true;
@@ -185,6 +188,7 @@ function countLight() {
   let unlaunched = 0;
   let unplaceable = 0;
   let live = 0;
+  const kinds = [0, 0, 0, 0];
   for (let slot = 0; slot < recs.length; slot++) {
     const rx = anchorPositions[slot * 3]!, ry = anchorPositions[slot * 3 + 1]!, rz = anchorPositions[slot * 3 + 2]!;
     const info = objects[slot]!;
@@ -197,12 +201,14 @@ function countLight() {
       continue;
     }
     positioned++;
+    const kind = master[slot * STRIDE + KIND]!;
+    kinds[kind] = kinds[kind]! + 1;
     if (Math.abs(anchorTime - info.epoch) <= DAY_MS) live++;
     const along = rx * sx + ry * sy + rz * sz;
     const cx = ry * sz - rz * sy, cy = rz * sx - rx * sz, cz = rx * sy - ry * sx;
     if (along > 0 || cx * cx + cy * cy + cz * cz > EARTH_RADIUS_KM * EARTH_RADIUS_KM) lit++;
   }
-  return { positioned, sunlit: lit, unlaunched, unplaceable, live };
+  return { positioned, sunlit: lit, unlaunched, unplaceable, live, kinds };
 }
 
 function emit(anchored: boolean) {
@@ -394,7 +400,7 @@ async function loadCatalogue() {
 }
 
 function pick({ id, ...request }: PickRequest) {
-  const message: PickedMessage = { type: 'picked', id, candidates: findNearby(master, objects, anchorTime, request) };
+  const message: PickedMessage = { type: 'picked', id, candidates: findNearby(master, objects, anchorTime, request, 8, shownKinds) };
   scope.postMessage(message);
 }
 
@@ -580,6 +586,10 @@ scope.onmessage = (event: MessageEvent<CatalogRequest>) => {
     return;
   }
   if (request.type === 'retry') return load();
+  if (request.type === 'kinds') {
+    shownKinds = request.mask;
+    return;
+  }
   if (request.type === 'pick') return pick(request);
   if (request.type === 'describe') return describe(request);
   if (request.type === 'find') return find(request.id, request.norad);

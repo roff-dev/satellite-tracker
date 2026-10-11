@@ -108,13 +108,6 @@
         </ul>
       </section>
 
-      <section>
-        <label class="switch">
-          <input type="checkbox" checked={view.debrisShown} onchange={(e) => view.setDebrisShown(e.currentTarget.checked)} />
-          <span class="track" aria-hidden="true"></span>
-          Show debris and rocket bodies
-        </label>
-      </section>
     </div>
   {/if}
 </div>
@@ -212,59 +205,5 @@
     width: 10px;
     height: 10px;
     clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
-  }
-
-  .switch {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    min-height: 44px;
-    font-size: var(--size-label);
-    color: var(--ink);
-    cursor: pointer;
-  }
-
-  .switch input {
-    position: absolute;
-    opacity: 0;
-    width: 1px;
-    height: 1px;
-  }
-
-  /* A flat two-facet switch: amber when on */
-  .track {
-    position: relative;
-    flex: none;
-    width: 40px;
-    height: 22px;
-    background: var(--raise);
-    clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
-    transition: background 0.2s;
-  }
-
-  .track::after {
-    content: '';
-    position: absolute;
-    top: 4px;
-    left: 4px;
-    width: 14px;
-    height: 14px;
-    background: var(--muted);
-    clip-path: polygon(3px 0, 100% 0, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0 100%, 0 3px);
-    transition: translate 0.2s, background 0.2s;
-  }
-
-  .switch input:checked + .track {
-    background: var(--glint);
-  }
-
-  .switch input:checked + .track::after {
-    translate: 18px 0;
-    background: var(--void);
-  }
-
-  .switch input:focus-visible + .track {
-    outline: 2px solid var(--glint);
-    outline-offset: 3px;
   }
 </style>

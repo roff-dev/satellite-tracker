@@ -5,6 +5,7 @@
   import { selection } from '../selection.svelte';
   import Search from './Search.svelte';
   import ViewMenu from './ViewMenu.svelte';
+  import TypeFilter from './TypeFilter.svelte';
 
   const number = new Intl.NumberFormat('en-GB');
   const group = $derived(view.group ? GROUPS.find((g) => g.slug === view.group) : null);
@@ -38,6 +39,7 @@
         <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M3 2 14 13l-1 1L2 3zM13 2l1 1L3 14l-1-1z" fill="currentColor" /></svg>
       </button>
     {/if}
+    <TypeFilter />
   </div>
 {/if}
 
@@ -51,6 +53,18 @@
     flex-direction: column;
     align-items: flex-end;
     gap: var(--space-2);
+  }
+
+  /* Phones: the bar spans the screen so the kinds can run across it; touches between controls reach the globe */
+  @media (max-width: 699px), (orientation: landscape) and (max-height: 500px) {
+    .top-bar {
+      left: var(--gutter);
+      pointer-events: none;
+    }
+
+    .top-bar > :global(*:not(.types)) {
+      pointer-events: auto;
+    }
   }
 
   .row {

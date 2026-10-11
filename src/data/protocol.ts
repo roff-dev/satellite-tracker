@@ -3,6 +3,8 @@ import type { OrbitClass, OrbitNumbers } from '../orbit/describe';
 
 /** Object kinds as stored in the element buffer and read by the shader. */
 export const Kind = { Active: 0, Dead: 1, Rocket: 2, Debris: 3 } as const;
+/** Which kinds are shown, one bit per kind: all of them. */
+export const ALL_KINDS = 0b1111;
 
 export type Dataset = 'bright' | 'payloads' | 'debris';
 
@@ -13,6 +15,8 @@ export type CatalogRequest =
   | { type: 'recycle'; buffer: ArrayBuffer }
   /** Try again for any dataset that couldn't be fetched. */
   | { type: 'retry' }
+  /** The kinds being shown, one bit per kind; hidden kinds can't be picked. */
+  | { type: 'kinds'; mask: number }
   | PickRequest
   | DescribeRequest
   /** Look an object up by its catalogue number, for links that name one. */
@@ -159,6 +163,8 @@ export interface ElementsMessage {
   unplaceable: number;
   /** Positioned objects within a day of their orbit's measurement. */
   live: number;
+  /** Positioned objects of each kind, indexed by Kind. */
+  kinds: number[];
   /** True when this answers an anchor request; false when new objects arrived. */
   anchored: boolean;
 }

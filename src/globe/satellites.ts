@@ -16,7 +16,7 @@ import { GLOW_LAYER } from './glow';
 import { KEY_GLSL, KEY_UNIFORMS_GLSL, ORBIT_GLSL } from './orbit.glsl';
 import { createTrails } from './trails';
 import type { QualitySettings } from './quality';
-import type { ElementsMessage } from '../data/protocol';
+import { ALL_KINDS, type ElementsMessage } from '../data/protocol';
 
 const vertexShader = /* glsl */ `
   #include <common>
@@ -30,7 +30,7 @@ const vertexShader = /* glsl */ `
   uniform float uSelected;
   uniform float uHovered;
   uniform float uHidden;
-  uniform float uDebrisShown;
+  uniform int uKinds;
   ${KEY_UNIFORMS_GLSL}
 
   in float aMdot;
@@ -70,8 +70,8 @@ const vertexShader = /* glsl */ `
 
     int kind = int(aX.y + 0.5);
     float glint = aX.z;
-    // The debris and rocket bodies layer can be switched off
-    if (kind >= 2 && uDebrisShown < 0.5) {
+    // Kinds can be switched off, though the selected object stays: search can find one that's hidden
+    if (((uKinds >> kind) & 1) == 0 && float(gl_VertexID) != uSelected) {
       hide();
       return;
     }
@@ -174,7 +174,8 @@ export function createSatellites(reducedMotion: boolean, trailDetail: QualitySet
     uHidden: { value: -1 },
     // A group's filter code, or -1 for everything
     uFilter: { value: -1 },
-    uDebrisShown: { value: 1 },
+    // Kinds drawn, one bit per kind
+    uKinds: { value: ALL_KINDS },
     uColourBy: { value: 0 },
     uGlint: { value: token('--glint') },
     uMuted: { value: token('--muted') },
@@ -264,8 +265,9 @@ export function createSatellites(reducedMotion: boolean, trailDetail: QualitySet
     setFilter(filter: number) {
       uniforms.uFilter.value = filter;
     },
-    setDebrisShown(shown: boolean) {
-      uniforms.uDebrisShown.value = shown ? 1 : 0;
+    /** Which kinds are drawn, one bit per kind. */
+    setKinds(mask: number) {
+      uniforms.uKinds.value = mask;
     },
     /** 0 by sunlight, 1 by what it is, 2 by orbit. */
     setColourBy(mode: number) {
