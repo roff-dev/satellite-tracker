@@ -120,7 +120,10 @@
   let shownFor = -1;
   $effect(() => {
     const norad = selected?.norad ?? -1;
-    if (norad !== shownFor) view.launchCount = null;
+    if (norad !== shownFor) {
+      view.launchCount = null;
+      closing = false;
+    }
     shownFor = norad;
   });
 
@@ -133,8 +136,22 @@
     wasOpen = open;
   });
   $effect(() => {
-    const target = selected && sheet ? heights[detent] : 0;
+    const target = selected && sheet && !closing ? heights[detent] : 0;
     void height.set(target, { instant: reducedMotion || dragging });
+  });
+
+  // A sheet sent away slides down first, and the selection clears once it's nearly gone
+  let closing = $state(false);
+  function closeSheet() {
+    dragging = false;
+    if (reducedMotion) return selection.close();
+    closing = true;
+  }
+  $effect(() => {
+    if (closing && height.current < 24) {
+      closing = false;
+      selection.close();
+    }
   });
 
   // At its lowest step the sheet leaves room for the whole timeline; above that the timeline docks to one row
@@ -159,35 +176,112 @@
   });
 
   let dragging = $state(false);
-  let drag: { y: number; height: number; lastY: number; lastTime: number } | null = null;
+  /** Finger speed in px/ms, upward positive, smoothed over the last few moves; a pause before letting go zeroes it. */
+  type Motion = { lastY: number; lastTime: number; velocity: number };
+  function follow(motion: Motion, y: number, time: number) {
+    const dt = time - motion.lastTime;
+    if (dt > 0) motion.velocity = 0.7 * ((motion.lastY - y) / dt) + 0.3 * motion.velocity;
+    motion.lastY = y;
+    motion.lastTime = time;
+  }
+  const releaseSpeed = (motion: Motion, time: number) => (time - motion.lastTime > 100 ? 0 : motion.velocity);
+  const FLICK = 0.5;
+
+  let drag: (Motion & { y: number; height: number; from: Detent }) | null = null;
 
   function onDragStart(event: PointerEvent) {
     if (!sheet) return;
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-    drag = { y: event.clientY, height: height.current, lastY: event.clientY, lastTime: event.timeStamp };
+    drag = { y: event.clientY, height: height.current, from: detent, lastY: event.clientY, lastTime: event.timeStamp, velocity: 0 };
     dragging = true;
   }
 
   function onDragMove(event: PointerEvent) {
     if (!drag) return;
-    const next = Math.min(heights.full, Math.max(0, drag.height + drag.y - event.clientY));
-    drag.lastY = event.clientY;
-    drag.lastTime = event.timeStamp;
-    void height.set(next, { instant: true });
+    follow(drag, event.clientY, event.timeStamp);
+    void height.set(Math.min(heights.full, Math.max(0, drag.height + drag.y - event.clientY)), { instant: true });
   }
 
   function onDragEnd(event: PointerEvent) {
     if (!drag) return;
-    // Where it would come to rest given how fast it was flicked
-    const velocity = (drag.lastY - event.clientY) / Math.max(16, event.timeStamp - drag.lastTime + 16);
-    const projected = height.current + velocity * 180;
+    const velocity = releaseSpeed(drag, event.timeStamp);
+    const from = drag.from;
     drag = null;
+    // A flick moves one step from where the drag began: full to half, half or lower to closed
+    if (velocity < -FLICK) {
+      if (from !== 'full') return closeSheet();
+      detent = 'half';
+    } else if (velocity > FLICK) {
+      detent = from === 'peek' ? 'half' : 'full';
+    } else {
+      // Let go without a flick: it settles on the nearest step, or closes if lowered almost away
+      if (height.current < heights.peek * 0.6) return closeSheet();
+      const order: Detent[] = ['peek', 'half', 'full'];
+      detent = order.reduce((best, d) => (Math.abs(heights[d] - height.current) < Math.abs(heights[best] - height.current) ? d : best), 'peek');
+    }
     dragging = false;
-    if (projected < heights.peek * 0.6) return selection.close();
-    const order: Detent[] = ['peek', 'half', 'full'];
-    detent = order.reduce((best, d) => (Math.abs(heights[d] - projected) < Math.abs(heights[best] - projected) ? d : best), 'peek');
     void height.set(heights[detent]);
   }
+
+  // Pulling the list down from its top closes the sheet, as long as the list was already resting at the top
+  // when the finger went down; reaching the top while scrolling up never closes it, even with the next swipe
+  const SETTLED_MS = 400;
+  let body = $state<HTMLElement>();
+  $effect(() => {
+    const list = body;
+    if (!list || !sheet) return;
+    let lastScroll = 0;
+    let pull: (Motion & { x: number; y: number; height: number; armed: boolean; mode: 'sheet' | 'list' | null }) | null = null;
+    const onScroll = () => (lastScroll = performance.now());
+    const onStart = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      pull =
+        touch && event.touches.length === 1
+          ? { x: touch.clientX, y: touch.clientY, height: height.current, armed: list.scrollTop <= 0 && performance.now() - lastScroll > SETTLED_MS, mode: null, lastY: touch.clientY, lastTime: event.timeStamp, velocity: 0 }
+          : null;
+    };
+    const onMove = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (!pull || !touch || event.touches.length !== 1) return;
+      const dx = Math.abs(touch.clientX - pull.x);
+      const dy = touch.clientY - pull.y;
+      if (!pull.mode) {
+        // Held still until the gesture is decided, so the list doesn't start scrolling first; sideways
+        // swipes (the row of nearby objects) are left alone
+        if (pull.armed && dy > dx) event.preventDefault();
+        if (Math.hypot(dx, dy) < 6) return;
+        pull.mode = pull.armed && dy > dx ? 'sheet' : 'list';
+        if (pull.mode === 'sheet') dragging = true;
+      }
+      if (pull.mode !== 'sheet') return;
+      event.preventDefault();
+      follow(pull, touch.clientY, event.timeStamp);
+      void height.set(Math.max(0, pull.height - Math.max(0, dy)), { instant: true });
+    };
+    const onEnd = (event: TouchEvent) => {
+      if (pull?.mode === 'sheet') {
+        const pulled = pull.height - height.current;
+        if (pulled >= Math.max(80, pull.height * 0.2) || releaseSpeed(pull, event.timeStamp) < -FLICK) closeSheet();
+        else {
+          dragging = false;
+          void height.set(heights[detent]);
+        }
+      }
+      pull = null;
+    };
+    list.addEventListener('scroll', onScroll, { passive: true });
+    list.addEventListener('touchstart', onStart, { passive: true });
+    list.addEventListener('touchmove', onMove, { passive: false });
+    list.addEventListener('touchend', onEnd);
+    list.addEventListener('touchcancel', onEnd);
+    return () => {
+      list.removeEventListener('scroll', onScroll);
+      list.removeEventListener('touchstart', onStart);
+      list.removeEventListener('touchmove', onMove);
+      list.removeEventListener('touchend', onEnd);
+      list.removeEventListener('touchcancel', onEnd);
+    };
+  });
 </script>
 
 {#if selected && !selection.following}
@@ -214,7 +308,7 @@
       </button>
     </header>
 
-    <div class="body">
+    <div class="body" bind:this={body}>
       {#if nearby.length}
         <section class="nearby" aria-labelledby="nearby-title">
           <h3 id="nearby-title">Also under your tap</h3>
