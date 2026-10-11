@@ -6,6 +6,7 @@
   import { accuracyGrade, type Grade, type OrbitClass } from '../../orbit/describe';
   import { view } from '../view.svelte';
   import { loadNames, names as shared } from '../names.svelte';
+  import { backToNow } from '../now';
 
   const KIND = { payload: 'Satellite', rocket: 'Rocket body', debris: 'Debris' } as const;
   const CLASS: Record<OrbitClass, string> = {
@@ -26,12 +27,24 @@
   const two = new Intl.NumberFormat('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const day = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
   const relative = new Intl.RelativeTimeFormat('en-GB', { numeric: 'auto' });
+  const away = new Intl.RelativeTimeFormat('en-GB', { numeric: 'always' });
+  const moment = new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
   function ago(ms: number) {
     const minutes = (Date.now() - ms) / 60_000;
     if (minutes < 90) return relative.format(-Math.max(1, Math.round(minutes)), 'minute');
     if (minutes < 48 * 60) return relative.format(-Math.round(minutes / 60), 'hour');
     return relative.format(-Math.round(minutes / 1440), 'day');
+  }
+
+  /** "In 3 hours", "2 days ago": how far the moment shown is from now. */
+  function fromNow(offset: number) {
+    const minutes = offset / 60_000;
+    const text =
+      Math.abs(minutes) < 90 ? away.format(Math.round(minutes), 'minute')
+      : Math.abs(minutes) < 48 * 60 ? away.format(Math.round(minutes / 60), 'hour')
+      : away.format(Math.round(minutes / 1440), 'day');
+    return text[0]!.toUpperCase() + text.slice(1);
   }
 
   const names = $derived(shared.table);
@@ -43,6 +56,9 @@
   const details = $derived(selection.described && selection.described.details.norad === selected?.norad ? selection.described.details : null);
   const now = $derived(details ? selection.described!.now : null);
   const grade = $derived(details ? accuracyGrade(details.epoch, clock.time) : null);
+  // The numbers are for the moment the timeline shows, which isn't always now
+  const shownAt = $derived(details ? selection.described!.time : 0);
+  const offset = $derived(shownAt - Date.now());
 
   function kindOf(station: boolean, type: keyof typeof KIND, working: boolean | null | undefined) {
     if (station) return 'Space station';
@@ -121,8 +137,9 @@
     void height.set(target, { instant: reducedMotion || dragging });
   });
 
+  // At its lowest step the sheet leaves room for the whole timeline; above that the timeline docks to one row
   $effect(() => {
-    selection.sheetOpen = !!selected && sheet && !selection.following;
+    selection.sheetDocked = !!selected && sheet && !selection.following && detent !== 'peek';
   });
   $effect(() => {
     document.documentElement.style.setProperty('--sheet', selected && sheet && !selection.following ? `${height.current}px` : '0px');
@@ -211,7 +228,14 @@
 
       {#if details}
         <section aria-labelledby="now-title">
-          <h3 id="now-title">Right now</h3>
+          {#if Math.abs(offset) < 30_000}
+            <h3 id="now-title">Right now</h3>
+          {:else}
+            <div class="when">
+              <h3 id="now-title"><span class="away">{fromNow(offset)}</span> {moment.format(shownAt)}</h3>
+              <button class="chip back" type="button" onclick={backToNow}>Now</button>
+            </div>
+          {/if}
           {#if now}
             <dl>
               <div><dt>Altitude</dt><dd><span class="figure">{number.format(now.altitudeKm)}</span> km</dd></div>
@@ -432,6 +456,29 @@
     font-size: var(--size-label);
     font-weight: 600;
     color: var(--muted);
+  }
+
+  /* Away from now, the heading names the moment, its distance from now in amber as on the timeline */
+  .when {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin: calc(-1 * var(--space-2)) 0 var(--space-3);
+  }
+
+  .when h3 {
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .away {
+    color: var(--glint);
+  }
+
+  .back {
+    flex: none;
+    font-size: var(--size-label);
   }
 
   p {

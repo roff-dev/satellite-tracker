@@ -5,6 +5,7 @@
   import { catalog } from '../catalog.svelte';
   import { selection } from '../selection.svelte';
   import { view } from '../view.svelte';
+  import { backToNow, stopFlyBack } from '../now';
   import { PROFILE_URL } from '../../site';
 
   const MINUTE = 60_000;
@@ -12,9 +13,19 @@
   const DAY = 24 * HOUR;
   const SPEEDS = [1, 60, 600, 3600];
   const SPEED_NAMES: Record<number, string> = { 1: 'real time', 60: 'a minute a second', 600: 'ten minutes a second', 3600: 'an hour a second' };
-  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  const readout = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const longReadout = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  // Phones: short enough that the moment, how far away it is and the live share share one line
+  const shortReadout = new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  let narrow = $state(false);
+  onMount(() => {
+    const query = matchMedia('(max-width: 699px)');
+    const update = () => (narrow = query.matches);
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  });
+  const readout = $derived(narrow ? shortReadout : longReadout);
   const spoken = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
   const dayLabel = new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric' });
   const hourLabel = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
@@ -157,30 +168,8 @@
     clock.setSpeed(Math.sign(clock.rate || 1) * next);
   }
 
-  // "Now" races the clock back to the present rather than cutting to it
-  let flyBack = 0;
-  function stopFlyBack() {
-    cancelAnimationFrame(flyBack);
-    flyBack = 0;
-  }
-  function backToNow() {
-    stopFlyBack();
-    if (reducedMotion) return clock.now();
-    const from = clock.time;
-    const start = performance.now();
-    clock.setPaused(true);
-    const step = () => {
-      const t = Math.min((performance.now() - start) / 900, 1);
-      const e = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
-      clock.set(from + (Date.now() - from) * e);
-      if (t < 1) flyBack = requestAnimationFrame(step);
-      else {
-        flyBack = 0;
-        clock.now();
-      }
-    };
-    flyBack = requestAnimationFrame(step);
-  }
+  /** The direction playback last ran in, which a play button resumes. */
+  const heading = $derived(Math.sign(rate) || 1);
 
   function toggleReach() {
     clock.setReach(reach === STANDARD_DAYS ? EXTENDED_DAYS : STANDARD_DAYS);
@@ -204,7 +193,17 @@
   });
 </script>
 
-<section bind:this={bar} class="timeline" class:docked={selection.sheetOpen} aria-label="Time">
+<!-- One button per direction: it plays that way, and while playing that way it's the pause button -->
+{#snippet direction(dir: 1 | -1)}
+  {@const running = !paused && Math.sign(rate) === dir}
+  <button class="chip icon" class:on={running} class:other={dir !== heading} type="button" aria-label={running ? 'Pause' : dir < 0 ? 'Play backwards' : 'Play'} onclick={() => (running ? pause() : play(dir))}>
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      {#if running}<path d="M3 2h4v12H3zM9 2h4v12H9z" fill="currentColor" />{:else if dir < 0}<path d="M12 2v12L3 8z" fill="currentColor" />{:else}<path d="M4 2v12l9-6z" fill="currentColor" />{/if}
+    </svg>
+  </button>
+{/snippet}
+
+<section bind:this={bar} class="timeline" class:docked={selection.sheetDocked} aria-label="Time">
   {#if beyondWeek && status?.done}
     <p class="notice illustrative">
       Beyond a week, positions are illustrative.
@@ -229,15 +228,8 @@
 
   <div class="controls">
     <div class="playback" role="group" aria-label="Playback">
-      <button class="chip icon" class:on={!paused && rate < 0} type="button" aria-label="Play backwards" aria-pressed={!paused && rate < 0} onclick={() => play(-1)}>
-        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M12 2v12L3 8z" fill="currentColor" /></svg>
-      </button>
-      <button class="chip icon" class:on={paused} type="button" aria-label="Pause" aria-pressed={paused} onclick={pause}>
-        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3 2h4v12H3zM9 2h4v12H9z" fill="currentColor" /></svg>
-      </button>
-      <button class="chip icon" class:on={!paused && rate > 0} type="button" aria-label="Play" aria-pressed={!paused && rate > 0} onclick={() => play(1)}>
-        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 2v12l9-6z" fill="currentColor" /></svg>
-      </button>
+      {@render direction(-1)}
+      {@render direction(1)}
       <button class="chip speed" type="button" aria-label="Speed: {SPEED_NAMES[Math.abs(rate)]}. Change speed" onclick={faster}>
         <span class="figure">{Math.abs(rate)}×</span>
       </button>
@@ -339,6 +331,7 @@
     margin-left: var(--space-3);
     color: var(--glint);
     font-weight: 600;
+    white-space: nowrap;
   }
 
   .live {
@@ -370,7 +363,7 @@
   }
 
   .icon {
-    width: 40px;
+    width: 44px;
     justify-content: center;
     padding: 0;
   }
@@ -403,6 +396,7 @@
 
   .now {
     margin-left: var(--space-1);
+    padding: 0 var(--space-4);
   }
 
   /* The ribbon: a flat facet-cut band; accuracy fades away from now, and beyond a week it's hatched */
@@ -520,15 +514,6 @@
     text-decoration-color: currentColor;
   }
 
-  /* Above an open bottom sheet only the ribbon stays, so the globe keeps some room */
-  .docked .notice,
-  .docked .readout,
-  .docked .playback,
-  .docked .ends,
-  .docked .byline {
-    display: none;
-  }
-
   /* Phones: the ribbon gets its own row; controls below it */
   @media (max-width: 699px) {
     .controls {
@@ -548,5 +533,32 @@
     .byline {
       margin-top: calc(-1 * var(--space-1));
     }
+  }
+
+  /* Above a raised bottom sheet: one row of play, the ribbon and speed, so the globe keeps its room.
+     The panel heading says which moment is shown and offers the way back to now */
+  .docked .notice,
+  .docked .readout,
+  .docked .ends,
+  .docked .byline,
+  .docked .other {
+    display: none;
+  }
+
+  .docked .controls {
+    flex-wrap: nowrap;
+  }
+
+  .docked .playback {
+    display: contents;
+  }
+
+  .docked .ribbon {
+    order: 0;
+    flex-basis: auto;
+  }
+
+  .docked .speed {
+    order: 1;
   }
 </style>

@@ -44,6 +44,8 @@ export interface Hover {
 }
 
 export interface Described {
+  /** The moment the numbers are for (sim time, ms). */
+  time: number;
   details: ObjectDetails;
   /** Null when its orbit can't be worked out for the moment shown. */
   now: Whereabouts | null;
@@ -176,7 +178,7 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
       traced = { slot, time, stepMs: (reply.details.orbit.periodMinutes * 60_000) / 512 };
     }
     if (fly && reply.now) globe.flyTo(point.fromArray(reply.now.position));
-    onDescribed({ details: reply.details, now: reply.now });
+    onDescribed({ time: reply.time, details: reply.details, now: reply.now });
   }
 
   function select(next: Selection | null, fly = false) {

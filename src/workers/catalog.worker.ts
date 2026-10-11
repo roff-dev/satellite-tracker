@@ -462,6 +462,7 @@ function describe({ id, slot, time, paths }: DescribeRequest) {
   const message: DescribedMessage = {
     type: 'described',
     id,
+    time,
     details: {
       norad: info.norad,
       name: info.name,

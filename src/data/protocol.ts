@@ -73,6 +73,8 @@ export interface Whereabouts {
 export interface DescribedMessage {
   type: 'described';
   id: number;
+  /** The moment described (sim time, ms). */
+  time: number;
   details: ObjectDetails;
   /** Null when its orbit can't be worked out for this moment. */
   now: Whereabouts | null;
