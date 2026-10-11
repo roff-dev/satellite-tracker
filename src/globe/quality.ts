@@ -9,6 +9,8 @@ export interface QualitySettings {
   fullAtmosphere: boolean;
   /** Resolution of the glow buffer relative to the screen; 0 turns glow off. */
   glow: number;
+  /** Motion trails: samples per tail, and whether only satellites (not debris) get one. */
+  trails: { samples: number; payloadsOnly: boolean };
 }
 
 type NavigatorHints = Navigator & { deviceMemory?: number; connection?: { saveData?: boolean } };
@@ -26,11 +28,11 @@ export function settingsFor(tier: Tier): QualitySettings {
   const dpr = window.devicePixelRatio || 1;
   switch (tier) {
     case 'high':
-      return { tier, pixelRatio: Math.min(dpr, 2), antialias: true, fullAtmosphere: true, glow: 0.5 };
+      return { tier, pixelRatio: Math.min(dpr, 2), antialias: true, fullAtmosphere: true, glow: 0.5, trails: { samples: 8, payloadsOnly: false } };
     case 'medium':
-      return { tier, pixelRatio: Math.min(dpr, 2), antialias: true, fullAtmosphere: true, glow: 0.5 };
+      return { tier, pixelRatio: Math.min(dpr, 2), antialias: true, fullAtmosphere: true, glow: 0.5, trails: { samples: 8, payloadsOnly: false } };
     case 'low':
-      return { tier, pixelRatio: Math.min(dpr, 1.5), antialias: false, fullAtmosphere: false, glow: 0 };
+      return { tier, pixelRatio: Math.min(dpr, 1.5), antialias: false, fullAtmosphere: false, glow: 0, trails: { samples: 4, payloadsOnly: true } };
   }
 }
 

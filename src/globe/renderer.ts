@@ -6,7 +6,7 @@ import { createEarth } from './earth';
 import { createAtmosphere } from './atmosphere';
 import { createStars } from './stars';
 import { createCamera, timezoneLongitude } from './camera';
-import { createFpsProbe, initialTier, settingsFor, type Tier } from './quality';
+import { createFpsProbe, initialTier, settingsFor, type QualitySettings, type Tier } from './quality';
 import { GLOW_LAYER, GlowEffect, compilePasses } from './glow';
 
 export interface Globe {
@@ -28,6 +28,7 @@ export interface Globe {
   readonly pixelRatio: number;
   /** Resolution of the glow buffer relative to the screen; 0 when glow is off. */
   readonly glowScale: number;
+  readonly quality: QualitySettings;
   ready: Promise<void>;
   onInteract(fn: () => void): () => void;
   /** Screen space covered by panels (CSS px), so the globe can centre itself in the rest. */
@@ -182,6 +183,9 @@ export function createGlobe(host: HTMLElement): Globe {
     },
     get glowScale() {
       return quality.glow;
+    },
+    get quality() {
+      return quality;
     },
     get tier() {
       return tier;

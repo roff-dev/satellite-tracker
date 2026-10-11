@@ -13,6 +13,8 @@ import {
 } from 'three';
 import { STRIDE, keplerPosition } from '../orbit/elements';
 import { GLOW_LAYER } from './glow';
+import { KEY_GLSL, KEY_UNIFORMS_GLSL, ORBIT_GLSL } from './orbit.glsl';
+import { createTrails } from './trails';
 import type { ElementsMessage } from '../data/protocol';
 
 const vertexShader = /* glsl */ `
@@ -20,25 +22,15 @@ const vertexShader = /* glsl */ `
   #include <logdepthbuf_pars_vertex>
 
   uniform float uDt;
-  uniform float uDay;
   uniform vec3 uSun;
   uniform float uPixelRatio;
   uniform float uReveal;
   uniform vec2 uFresh;
-  uniform vec3 uPayload;
-  uniform vec3 uRocket;
-  uniform vec3 uDebris;
-  uniform vec3 uShadow;
-  uniform vec3 uFlare;
   uniform float uSelected;
   uniform float uHovered;
   uniform float uHidden;
-  uniform float uFilter;
   uniform float uDebrisShown;
-  uniform float uColourBy;
-  uniform vec3 uGlint;
-  uniform vec3 uMuted;
-  uniform vec3 uInk;
+  ${KEY_UNIFORMS_GLSL}
 
   in float aMdot;
   in vec4 aP;
@@ -50,7 +42,8 @@ const vertexShader = /* glsl */ `
   out vec3 vColour;
   out float vSelected;
 
-  const float KM = 1.0 / 6371.0;
+  ${ORBIT_GLSL}
+  ${KEY_GLSL}
 
   void hide() {
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
@@ -66,20 +59,9 @@ const vertexShader = /* glsl */ `
       return;
     }
 
-    // Kepler's equation, then SGP4's secular drift: mean motion and drag, perigee, node
-    float M = mod(position.z + aMdot * uDt + aX.x * uDt * uDt, 6.2831853);
-    float E = e < 0.8 ? M : PI;
-    for (int i = 0; i < 5; i++) E -= (E - e * sin(E) - M) / (1.0 - e * cos(E));
-    vec2 xy = vec2(a * (cos(E) - e), a * sqrt(1.0 - e * e) * sin(E));
-    float dw = aP.w * uDt;
-    float dO = aQ.w * uDt;
-    xy = mat2(cos(dw), sin(dw), -sin(dw), cos(dw)) * xy;
-    vec3 r = xy.x * aP.xyz + xy.y * aQ.xyz;
-    r.xy = mat2(cos(dO), sin(dO), -sin(dO), cos(dO)) * r.xy;
-    vec3 p = vec3(r.x, r.z, -r.y) * KM;
-
-    // Earth's shadow as a cylinder, softened a little at the edge so objects fade rather than blink
-    float lit = dot(p, uSun) > 0.0 ? 1.0 : smoothstep(0.985, 1.015, length(cross(p, uSun)));
+    vec3 r = orbitPosition(position, aMdot, aP, aQ, aX.x, uDt);
+    vec3 p = toScene(r);
+    float lit = inSunlight(p, uSun);
 
     // How much of the lit side faces the viewer: a Lambert sphere's phase law
     float beta = acos(clamp(dot(uSun, normalize(cameraPosition - p)), -1.0, 1.0));
@@ -92,27 +74,13 @@ const vertexShader = /* glsl */ `
       hide();
       return;
     }
-    vec3 base = kind <= 1 ? uPayload : kind == 2 ? uRocket : uDebris;
     float size = kind <= 1 ? 2.5 : kind == 2 ? 3.0 : 1.5;
     float opacity = kind == 1 ? 0.6 : 1.0;
     // More than a week from when its orbit was measured, its position is a rough guide: drawn at half strength
     if (abs(uDay - aEpoch) > 7.0) opacity *= 0.5;
 
-    // Colour by what it is, or by the kind of orbit it's on, instead of by sunlight
-    vec3 key = base;
-    if (uColourBy > 0.5 && uColourBy < 1.5) key = kind == 0 ? uGlint : kind == 1 ? uMuted : kind == 2 ? uFlare : uDebris;
-    if (uColourBy > 1.5) key = e >= 0.25 ? uInk : a < 8413.0 ? uShadow : a >= 41060.0 && a <= 43420.0 ? uFlare : uGlint;
-
-    // A group filter dims everything outside the group rather than hiding it, so the rest stays as context
-    float member = 1.0;
-    if (uFilter >= 0.0) {
-      bool inside;
-      if (uFilter > 101.5) inside = kind >= 2;
-      else if (uFilter > 100.5) inside = glint >= 3.98;
-      else if (uFilter > 99.5) inside = uDay - aX.w <= 30.0;
-      else inside = ((int(aGroups + 0.5) >> int(uFilter + 0.5)) & 1) == 1;
-      member = inside ? 1.0 : 0.08;
-    }
+    vec3 key = keyColour(kind, a, e);
+    float member = membership(kind, glint, aX.w, aGroups);
 
     // Glint runs 0.35 to 8. On screen it saturates at 3, compressed so the brightest stay amber rather than
     // clipping to white; the range above 3 only picks out the truly bright objects that glow
@@ -231,6 +199,10 @@ export function createSatellites(reducedMotion: boolean) {
   const glowPixelRatio = { value: 1 };
   glowMaterial.uniforms = { ...uniforms, uPixelRatio: glowPixelRatio };
   glowMaterial.defines = { GLOW: '' };
+  const trails = createTrails(uniforms);
+  /** How far the trails have faded in, 0 to 1. */
+  let trailStrength = 0;
+  let lastUpdate = performance.now();
   const glowPoints = new Points(geometry, glowMaterial);
   glowPoints.frustumCulled = false;
   glowPoints.layers.set(GLOW_LAYER);
@@ -260,6 +232,7 @@ export function createSatellites(reducedMotion: boolean) {
   return {
     points,
     glowPoints,
+    trailLines: trails.lines,
     setElements({ el, count: next, time }: ElementsMessage) {
       const attribute = geometry.getAttribute('position') as InterleavedBufferAttribute | undefined;
       if (attribute && attribute.data.array.length === el.length) {
@@ -274,6 +247,7 @@ export function createSatellites(reducedMotion: boolean) {
       count = next;
       anchorTime = time;
       geometry.setDrawRange(0, count);
+      trails.setElements(el, count);
     },
     /** Highlights one object (its buffer slot), or none with -1. */
     setSelected(slot: number) {
@@ -308,7 +282,15 @@ export function createSatellites(reducedMotion: boolean) {
     start() {
       started = true;
     },
-    update(time: number, sun: Vector3, pixelRatio: number, glowScale: number) {
+    /** Speed is sim time per real time, signed; trails show at 60× and faster. */
+    update(time: number, sun: Vector3, pixelRatio: number, glowScale: number, speed = 1, detail = { samples: 8, payloadsOnly: false }) {
+      const real = performance.now();
+      const target = Math.abs(speed) >= 60 ? 1 : 0;
+      // Trails fade in and out over 400 ms, or switch straight over without motion
+      trailStrength = reducedMotion ? target : Math.min(1, Math.max(0, trailStrength + Math.sign(target - trailStrength) * ((real - lastUpdate) / 400)));
+      lastUpdate = real;
+      trails.setDetail(detail.samples, detail.payloadsOnly);
+      trails.update(speed, trailStrength);
       uniforms.uDt.value = (time - anchorTime) / 1000;
       uniforms.uDay.value = time / DAY_MS;
       uniforms.uSun.value.copy(sun);
@@ -331,6 +313,7 @@ export function createSatellites(reducedMotion: boolean) {
       geometry.dispose();
       material.dispose();
       glowMaterial.dispose();
+      trails.dispose();
     },
   };
 }
