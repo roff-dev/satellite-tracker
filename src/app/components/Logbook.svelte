@@ -11,15 +11,15 @@
     second: '2-digit',
   });
 
-  let entry = $state(format.format(clock.time));
+  let time = $state(clock.time);
 
   onMount(() => {
-    const id = setInterval(() => (entry = format.format(clock.time)), 250);
+    const id = setInterval(() => (time = clock.time), 250);
     return () => clearInterval(id);
   });
 </script>
 
-<p class="logbook"><time datetime={new Date(clock.time).toISOString()}>{entry}</time></p>
+<p class="logbook"><time datetime={new Date(time).toISOString()}>{format.format(time)}</time></p>
 
 <style>
   .logbook {
