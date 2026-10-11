@@ -6,6 +6,7 @@
   import { selection } from './selection.svelte';
   import ObjectPanel from './components/ObjectPanel.svelte';
   import HoverLabel from './components/HoverLabel.svelte';
+  import FollowBar from './components/FollowBar.svelte';
 
   const DAY_MS = 86_400_000;
 
@@ -37,6 +38,9 @@
         onDescribed(described) {
           selection.described = described;
         },
+        onFollow(name) {
+          selection.following = name;
+        },
         onHover(hover) {
           selection.hover = hover;
         },
@@ -44,6 +48,8 @@
       catalog.retry = app.retryNow;
       selection.choose = app.choose;
       selection.close = app.deselect;
+      selection.follow = app.follow;
+      selection.stopFollowing = app.stopFollowing;
       // Created after the async import, so it needs its own root, cleaned up with the globe
       const stopInsets = $effect.root(() => {
         $effect(() => app.setInsets(selection.insets.right, selection.insets.bottom));
@@ -64,6 +70,7 @@
 <Logbook />
 
 <ObjectPanel />
+<FollowBar />
 <HoverLabel />
 
 <footer class="byline">

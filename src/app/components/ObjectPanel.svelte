@@ -166,7 +166,7 @@
   }
 </script>
 
-{#if selected}
+{#if selected && !selection.following}
   <aside bind:this={panel} class="panel" class:sheet style:height={sheet ? `${height.current}px` : undefined} aria-labelledby="object-name">
     <header role="group" onpointerdown={onDragStart} onpointermove={onDragMove} onpointerup={onDragEnd} onpointercancel={onDragEnd}>
       {#if sheet}
@@ -268,6 +268,7 @@
         </section>
 
         <div class="actions">
+          <button class="button" type="button" onclick={() => selection.follow()} disabled={!now}>Follow</button>
           <button class="chip" type="button" onclick={() => share(details.name, details.norad)}>{shared ? 'Link copied' : 'Share'}</button>
         </div>
       {/if}
@@ -539,6 +540,8 @@
   }
 
   .actions {
+    display: flex;
+    gap: var(--space-3);
     padding-top: var(--space-4);
     border-top: 1px solid var(--line);
   }

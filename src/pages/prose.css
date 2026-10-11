@@ -45,34 +45,6 @@
   align-content: center;
 }
 
-/* A facet-cut button: two flat tones split on the diagonal, as if lit from the upper left */
 .page .button {
-  position: relative;
-  isolation: isolate;
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
   margin-top: var(--space-6);
-  padding: 0 var(--space-6);
-  color: var(--void);
-  font-weight: 650;
-  text-decoration: none;
-}
-
-.page .button::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background: linear-gradient(155deg, color-mix(in oklab, var(--glint), white 22%) 0 48%, var(--glint) 48% 100%);
-  clip-path: var(--facet-cut);
-  transition: filter 0.2s;
-}
-
-.page .button:hover::before {
-  filter: brightness(1.08);
-}
-
-.page .button:active::before {
-  filter: brightness(0.94);
 }
