@@ -193,39 +193,69 @@ function addRow(row: Row) {
   anchorOne(slot, new Date(anchorTime));
 }
 
-const loaded: Dataset[] = [];
-const failed: Dataset[] = [];
+const loaded = new Set<Dataset>();
+let failed: Dataset[] = [];
 let fetchedAt: string | null = null;
+/** Any dataset in use came from the build-time snapshot rather than the live Worker. */
+let stale = false;
+let operationalLoaded = false;
+let rcsReady: Promise<void> | null = null;
+let wasmReady: Promise<void> | null = null;
+let snapshotAge: Promise<string | null> | null = null;
+let loading: Promise<void> | null = null;
 
 function progress(done: boolean) {
-  const message: ProgressMessage = { type: 'progress', count: recs.length, loaded: [...loaded], failed: [...failed], fetchedAt, done };
+  const message: ProgressMessage = { type: 'progress', count: recs.length, loaded: [...loaded], failed: [...failed], fetchedAt, stale, done };
   scope.postMessage(message);
 }
 
+function noteAge(at: string | null) {
+  if (at && (!fetchedAt || at < fetchedAt)) fetchedAt = at;
+}
+
+/** Orbit data, not an error or fallback HTML page that a server answered with. */
+const usable = (response: Response | null): response is Response =>
+  !!response?.ok && !!response.body && !(response.headers.get('Content-Type') ?? '').includes('html');
+
 /** The Worker's cached copy first, then the static snapshot taken at build time. */
-async function fetchData(name: string): Promise<Response> {
-  for (const url of [`/api/${name}`, `/snapshot/${name}.csv`]) {
-    const response = await fetch(url).catch(() => null);
-    if (response?.ok && response.body) return response;
-  }
+async function fetchData(name: string): Promise<{ response: Response; snapshot: boolean }> {
+  const live = await fetch(`/api/${name}`).catch(() => null);
+  if (usable(live)) return { response: live, snapshot: false };
+  const stored = await fetch(`/snapshot/${name}.csv`).catch(() => null);
+  if (usable(stored)) return { response: stored, snapshot: true };
   throw new Error(`No source for ${name}`);
 }
 
+/** Reads every dataset not yet loaded, so calling it again retries only what failed. */
 async function loadCatalogue() {
-  const datasets: Dataset[] = ['bright', 'payloads', 'debris'];
+  const datasets = (['bright', 'payloads', 'debris'] as const).filter((name) => !loaded.has(name));
+  failed = [];
   // Requested together, read in order: the brightest objects reach the screen first
   const responses = datasets.map((name) => fetchData(name));
   responses.forEach((r) => r.catch(() => undefined));
-  const rcs = fetch('/rcs.bin')
+  rcsReady ??= fetch('/rcs.bin')
     .then((r) => (r.ok ? r.arrayBuffer() : null))
-    .catch(() => null);
-  const wasm = createBulk().catch(() => null);
+    .then((table) => {
+      if (table) rcsTable = decodeRcsTable(table);
+    })
+    .catch(() => undefined);
+  wasmReady ??= createBulk()
+    .then((propagator) => {
+      bulk = propagator;
+    })
+    .catch(() => undefined);
 
   for (const [i, name] of datasets.entries()) {
     try {
-      const response = await responses[i]!;
-      const at = response.headers.get('X-Fetched-At');
-      if (at && (!fetchedAt || at < fetchedAt)) fetchedAt = at;
+      const { response, snapshot } = await responses[i]!;
+      if (snapshot) {
+        stale = true;
+        snapshotAge ??= fetch('/snapshot/meta.json')
+          .then((r) => (r.ok ? (r.json() as Promise<{ fetchedAt: string | null }>) : null))
+          .then((meta) => meta?.fetchedAt ?? null)
+          .catch(() => null);
+        noteAge(await snapshotAge);
+      } else noteAge(response.headers.get('X-Fetched-At'));
       let flushed = recs.length;
       const reader = new CsvReader(addRow);
       await readCsv(response.body!, reader, () => {
@@ -234,25 +264,25 @@ async function loadCatalogue() {
         emit(false);
         progress(false);
       });
-      loaded.push(name);
+      loaded.add(name);
     } catch {
       failed.push(name);
     }
     emit(false);
     progress(false);
     if (name === 'bright') {
-      const table = await rcs;
-      if (table) rcsTable = decodeRcsTable(table);
+      await rcsReady;
       for (let slot = 0; slot < recs.length; slot++) writeStatic(slot);
     }
   }
 
-  bulk = await wasm;
+  await wasmReady;
   progress(true);
 
   // Which payloads still work: only dims the dead ones, so it can wait
+  if (operationalLoaded || !recs.length) return;
   try {
-    const response = await fetchData('satcat');
+    const { response } = await fetchData('satcat');
     const active = new Set<number>();
     await readCsv(
       response.body!,
@@ -261,11 +291,16 @@ async function loadCatalogue() {
       }),
     );
     operational = active;
+    operationalLoaded = true;
     for (let slot = 0; slot < recs.length; slot++) writeStatic(slot);
     emit(false);
   } catch {
     // Every payload stays drawn as active
   }
+}
+
+function load() {
+  loading ??= loadCatalogue().finally(() => (loading = null));
 }
 
 scope.onmessage = (event: MessageEvent<CatalogRequest>) => {
@@ -274,8 +309,9 @@ scope.onmessage = (event: MessageEvent<CatalogRequest>) => {
     if (request.buffer.byteLength === master.byteLength) spare.push(request.buffer);
     return;
   }
+  if (request.type === 'retry') return load();
   anchorAll(request.time);
   emit(true);
 };
 
-void loadCatalogue();
+load();

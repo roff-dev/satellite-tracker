@@ -59,6 +59,10 @@ export function connectCatalog(startTime: number, handlers: CatalogHandlers) {
     },
     /** Timeline jumps re-anchor straight away. */
     jump: anchor,
+    /** Fetch again whatever failed to load. */
+    retry() {
+      send({ type: 'retry' });
+    },
     dispose() {
       worker.terminate();
     },

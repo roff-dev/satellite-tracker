@@ -13,6 +13,7 @@
       const app = startGlobe(host, (status) => {
         catalog.status = status;
       });
+      catalog.retry = app.retryNow;
       app.globe.onInteract(() => document.documentElement.classList.add('exploring'));
       void app.globe.ready.then(() => (visible = true));
       dispose = () => app.dispose();

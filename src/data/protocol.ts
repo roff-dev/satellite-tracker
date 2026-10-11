@@ -7,7 +7,9 @@ export type CatalogRequest =
   /** Re-anchor every orbit at this sim time (ms). */
   | { type: 'anchor'; time: number }
   /** A buffer the renderer has finished with, handed back to be refilled. */
-  | { type: 'recycle'; buffer: ArrayBuffer };
+  | { type: 'recycle'; buffer: ArrayBuffer }
+  /** Try again for any dataset that couldn't be fetched. */
+  | { type: 'retry' };
 
 export interface ElementsMessage {
   type: 'elements';
@@ -32,6 +34,8 @@ export interface ProgressMessage {
   failed: Dataset[];
   /** When the oldest dataset in use was fetched from its source (ISO), if known. */
   fetchedAt: string | null;
+  /** Some data came from the build-time snapshot because the live Worker didn't answer. */
+  stale: boolean;
   done: boolean;
 }
 

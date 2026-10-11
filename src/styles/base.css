@@ -47,6 +47,48 @@ a {
   background: url(/favicon.svg) center / contain no-repeat;
 }
 
+/* Secondary control: facet-cut, a lit facet over --raise, at least 44 px tall */
+.chip {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: 600 0.9375rem / 1 var(--font-text);
+  cursor: pointer;
+}
+
+.chip::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(155deg, color-mix(in oklab, var(--raise), white 9%) 0 48%, var(--raise) 48% 100%);
+  clip-path: var(--facet-cut);
+  transition: filter 0.2s;
+}
+
+.chip:hover::before {
+  filter: brightness(1.15);
+}
+
+.chip:active::before {
+  filter: brightness(0.92);
+}
+
+.chip:disabled {
+  color: var(--faint);
+  cursor: default;
+}
+
+.chip:disabled::before {
+  filter: none;
+}
+
 .data {
   font-family: var(--font-data);
   font-size: var(--size-data);
