@@ -7,6 +7,20 @@
   import ObjectPanel from './components/ObjectPanel.svelte';
   import HoverLabel from './components/HoverLabel.svelte';
 
+  const DAY_MS = 86_400_000;
+
+  /** A shared link can name an object (?sat=25544) and a moment (&t=2026-10-11T21:14:00Z). */
+  function linkedStart() {
+    const params = new URLSearchParams(location.search);
+    const norad = Number(params.get('sat'));
+    const time = Date.parse(params.get('t') ?? '');
+    return {
+      norad: Number.isInteger(norad) && norad > 0 ? norad : undefined,
+      // The timeline reaches 90 days either way; anything further out is ignored
+      time: Number.isFinite(time) && Math.abs(time - Date.now()) <= 90 * DAY_MS ? time : undefined,
+    };
+  }
+
   let host: HTMLDivElement;
   let visible = $state(false);
 
@@ -20,10 +34,13 @@
         onSelection(current) {
           selection.current = current;
         },
+        onDescribed(described) {
+          selection.described = described;
+        },
         onHover(hover) {
           selection.hover = hover;
         },
-      });
+      }, linkedStart());
       catalog.retry = app.retryNow;
       selection.choose = app.choose;
       selection.close = app.deselect;

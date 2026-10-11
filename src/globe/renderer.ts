@@ -14,6 +14,10 @@ export interface Globe {
   camera: PerspectiveCamera;
   canvas: HTMLCanvasElement;
   inertial: Group;
+  /** Turns with the Earth: things fixed to the ground go here. */
+  earthFixed: Group;
+  /** Turns the view to face a point in space (scene units). */
+  flyTo(point: Vector3): void;
   /** Unit vector towards the Sun in scene space, updated every frame. */
   sun: Vector3;
   readonly pixelRatio: number;
@@ -158,6 +162,8 @@ export function createGlobe(host: HTMLElement): Globe {
     camera: view.camera,
     canvas: renderer.domElement,
     inertial,
+    earthFixed: earthFrame,
+    flyTo: (point: Vector3) => view.flyTo(point),
     sun,
     ready,
     get pixelRatio() {

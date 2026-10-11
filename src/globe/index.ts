@@ -1,7 +1,9 @@
 import { clock } from '../time/clock';
 import { connectCatalog } from '../data/catalog';
-import type { Candidate, Dataset } from '../data/protocol';
+import { Vector3 } from 'three';
+import type { Candidate, Dataset, ObjectDetails, Whereabouts } from '../data/protocol';
 import { attachPicking } from './picking';
+import { createTrack } from './track';
 import { createGlobe } from './renderer';
 import { createSatellites } from './satellites';
 
@@ -36,17 +38,35 @@ export interface Hover {
   y: number;
 }
 
+export interface Described {
+  details: ObjectDetails;
+  /** Null when its orbit can't be worked out for the moment shown. */
+  now: Whereabouts | null;
+}
+
 export interface GlobeHandlers {
   onStatus(status: CatalogStatus): void;
   onSelection(selection: Selection | null): void;
+  /** The selected object's details and live position, a few times a second; null when nothing is selected. */
+  onDescribed(described: Described | null): void;
   onHover(hover: Hover | null): void;
 }
+
+/** Where a shared link starts: an object to select and a moment to show. */
+export interface StartAt {
+  norad?: number;
+  time?: number;
+}
+
+/** How often the panel's live numbers refresh. */
+const DESCRIBE_MS = 250;
 
 /** Seconds before each automatic retry when something failed to load. */
 const RETRY_AFTER = [30, 60, 120];
 
 /** The globe with the catalogue on it: everything that needs three.js, loaded as one chunk. */
-export function startGlobe(host: HTMLElement, { onStatus, onSelection, onHover }: GlobeHandlers) {
+export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescribed, onHover }: GlobeHandlers, start: StartAt = {}) {
+  if (start.time !== undefined) clock.set(start.time);
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const globe = createGlobe(host);
   const satellites = createSatellites(reducedMotion);
@@ -78,16 +98,53 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onHover }
     onProgress({ count, done, failed, fetchedAt, stale }) {
       const unreachable = count === 0 && (done || status.unreachable);
       update({ count, done, failed, fetchedAt, stale, unreachable });
+      // A shared link names an object: select it once the catalogue is in, and turn to face it
+      if (done && start.norad !== undefined) {
+        const norad = start.norad;
+        start.norad = undefined;
+        void catalog.find(norad).then((candidate) => candidate && select({ candidates: [candidate], index: 0 }, true));
+      }
       if (done && failed.length) scheduleRetry();
       else if (done) update({ retryAt: null });
     },
   });
 
+  const track = createTrack(globe.inertial, globe.earthFixed);
   let selection: Selection | null = null;
-  function select(next: Selection | null) {
+  let describeTimer: ReturnType<typeof setInterval> | undefined;
+  /** When the drawn paths were traced, and how long one sample of them spans. */
+  let traced: { slot: number; time: number; stepMs: number } | null = null;
+  const point = new Vector3();
+
+  const selectedSlot = () => (selection ? selection.candidates[selection.index]!.slot : -1);
+
+  async function describe(fly = false) {
+    const slot = selectedSlot();
+    if (slot < 0) return;
+    const time = clock.time;
+    const paths = !traced || traced.slot !== slot || Math.abs(time - traced.time) > traced.stepMs;
+    const reply = await catalog.describe(slot, time, paths);
+    // The selection may have moved on while the worker was answering
+    if (selectedSlot() !== slot) return;
+    if (reply.paths) {
+      track.set(reply.paths.orbit, reply.paths.track, reply.paths.trackNow);
+      traced = { slot, time, stepMs: (reply.details.orbit.periodMinutes * 60_000) / 512 };
+    }
+    if (fly && reply.now) globe.flyTo(point.fromArray(reply.now.position));
+    onDescribed({ details: reply.details, now: reply.now });
+  }
+
+  function select(next: Selection | null, fly = false) {
     selection = next;
-    satellites.setSelected(next ? next.candidates[next.index]!.slot : -1);
+    satellites.setSelected(selectedSlot());
+    clearInterval(describeTimer);
+    traced = null;
+    track.clear();
     onSelection(next);
+    onDescribed(null);
+    if (!next) return;
+    void describe(fly);
+    describeTimer = setInterval(() => void describe(), DESCRIBE_MS);
   }
   const stopPicking = attachPicking(globe.canvas, globe.camera, () => clock.time, catalog.pick, {
     onTap(candidates) {
@@ -111,6 +168,7 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onHover }
 
   const stopJump = clock.onJump((time) => catalog.jump(time));
   const stopFrame = globe.onFrame(() => {
+    track.setResolution(globe.canvas.clientWidth, globe.canvas.clientHeight);
     catalog.tick(clock.time, clock.speed);
     satellites.update(clock.time, globe.sun, globe.pixelRatio, globe.glowScale);
   });
@@ -132,6 +190,8 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onHover }
     },
     dispose() {
       clearTimeout(retryTimer);
+      clearInterval(describeTimer);
+      track.dispose();
       stopPicking();
       removeEventListener('keydown', onKey);
       stopJump();
