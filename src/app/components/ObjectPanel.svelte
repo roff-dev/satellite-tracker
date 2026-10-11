@@ -343,12 +343,14 @@
     cursor: grab;
   }
 
+  /* Widened by the Nearby row's overhang either side, so that row's focus rings fit without the list panning sideways */
   .body {
     flex: 1 1 auto;
     min-height: 0;
-    overflow-y: auto;
+    margin: 0 calc(-1 * var(--space-1));
+    padding: 0 var(--space-1) calc(var(--space-6) + env(safe-area-inset-bottom));
+    overflow: hidden auto;
     overscroll-behavior: contain;
-    padding-bottom: calc(var(--space-6) + env(safe-area-inset-bottom));
   }
 
   .grip {
