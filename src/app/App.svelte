@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { PORTFOLIO_URL } from '../site';
+  import { PROFILE_URL } from '../site';
   import Logbook from './components/Logbook.svelte';
   import { catalog } from './catalog.svelte';
 
@@ -26,7 +26,7 @@
 <Logbook />
 
 <footer class="byline">
-  <a href={PORTFOLIO_URL}>Made by Kieron Oates</a>
+  Made by <a href={PROFILE_URL}>Kieron</a>
 </footer>
 
 <style>
@@ -55,15 +55,23 @@
     right: var(--gutter);
     bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
     font-size: var(--size-label);
+    color: var(--faint);
   }
 
   .byline a {
-    color: var(--faint);
-    text-decoration: none;
-    transition: color 0.2s;
+    color: var(--muted);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.2em;
+    text-decoration-color: var(--line);
+    /* A comfortable tap target without moving the line */
+    padding: 0.875rem 0.375rem;
+    margin: -0.875rem -0.375rem;
+    transition: color 0.2s, text-decoration-color 0.2s;
   }
 
   .byline a:hover {
     color: var(--ink);
+    text-decoration-color: currentColor;
   }
 </style>
