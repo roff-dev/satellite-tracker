@@ -45,6 +45,7 @@ const vertexShader = /* glsl */ `
   in vec4 aQ;
   in vec4 aX;
   in float aGroups;
+  in float aEpoch;
 
   out vec3 vColour;
   out float vSelected;
@@ -94,6 +95,8 @@ const vertexShader = /* glsl */ `
     vec3 base = kind <= 1 ? uPayload : kind == 2 ? uRocket : uDebris;
     float size = kind <= 1 ? 2.5 : kind == 2 ? 3.0 : 1.5;
     float opacity = kind == 1 ? 0.6 : 1.0;
+    // More than a week from when its orbit was measured, its position is a rough guide: drawn at half strength
+    if (abs(uDay - aEpoch) > 7.0) opacity *= 0.5;
 
     // Colour by what it is, or by the kind of orbit it's on, instead of by sunlight
     vec3 key = base;
@@ -249,6 +252,7 @@ export function createSatellites(reducedMotion: boolean) {
     geometry.setAttribute('aQ', new InterleavedBufferAttribute(buffer, 4, 8));
     geometry.setAttribute('aX', new InterleavedBufferAttribute(buffer, 4, 12));
     geometry.setAttribute('aGroups', new InterleavedBufferAttribute(buffer, 1, 16));
+    geometry.setAttribute('aEpoch', new InterleavedBufferAttribute(buffer, 1, 17));
     points.geometry = geometry;
     glowPoints.geometry = geometry;
   }

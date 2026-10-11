@@ -4,14 +4,16 @@ export const MU = 398600.4418;
 
 /**
  * Floats per object in the interleaved buffer the GPU reads:
- * a e M0 ṁ | Px Py Pz ω̇ | Qx Qy Qz Ω̇ | t2 kind glint launchDay | groups
- * The group mask is a float holding up to 24 bits exactly.
+ * a e M0 ṁ | Px Py Pz ω̇ | Qx Qy Qz Ω̇ | t2 kind glint launchDay | groups epochDay
+ * The group mask is a float holding up to 24 bits exactly. Days are since 1970.
  */
-export const STRIDE = 17;
+export const STRIDE = 18;
 export const KIND = 13;
 export const GLINT = 14;
 export const LAUNCH_DAY = 15;
 export const GROUPS = 16;
+/** When the orbit was measured: positions far from it are drawn fainter. */
+export const EPOCH_DAY = 17;
 
 /**
  * Turns an SGP4 state vector (TEME km, km/s) at the reference time into an orbit the vertex shader

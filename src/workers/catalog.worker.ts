@@ -31,7 +31,7 @@ import { CONSTELLATIONS, FILTER, GEO_BIT, HIGHLIGHT_BIT, LISTED, STATION_BIT, la
 import { createSearch } from '../data/search';
 import { orbitNumbers } from '../orbit/describe';
 import { STATION, VISUAL, findNearby } from '../data/pick';
-import { GLINT, GROUPS, KIND, LAUNCH_DAY, STRIDE, writeElements } from '../orbit/elements';
+import { EPOCH_DAY, GLINT, GROUPS, KIND, LAUNCH_DAY, STRIDE, writeElements } from '../orbit/elements';
 import { decodeRcsTable, estimateBrightness, glintIntensity, type ObjectType } from '../orbit/brightness';
 
 const scope = self as unknown as DedicatedWorkerGlobalScope;
@@ -123,6 +123,7 @@ function writeStatic(slot: number) {
   master[o + LAUNCH_DAY] = info.launchDay;
   const lit = highlighted !== null && launchOf(info.cospar) === highlighted ? 1 << HIGHLIGHT_BIT : 0;
   master[o + GROUPS] = info.groups | (listedBits.get(info.norad) ?? 0) | lit;
+  master[o + EPOCH_DAY] = info.epoch / DAY_MS;
 }
 
 /** Groups known from the object itself: its name, the lists it came in on, and its orbit. */
@@ -181,15 +182,27 @@ function countLight() {
   const day = anchorTime / DAY_MS;
   let lit = 0;
   let positioned = 0;
+  let unlaunched = 0;
+  let unplaceable = 0;
+  let live = 0;
   for (let slot = 0; slot < recs.length; slot++) {
     const rx = anchorPositions[slot * 3]!, ry = anchorPositions[slot * 3 + 1]!, rz = anchorPositions[slot * 3 + 2]!;
-    if (Number.isNaN(rx) || objects[slot]!.launchDay > day) continue;
+    const info = objects[slot]!;
+    if (info.launchDay > day) {
+      unlaunched++;
+      continue;
+    }
+    if (Number.isNaN(rx)) {
+      unplaceable++;
+      continue;
+    }
     positioned++;
+    if (Math.abs(anchorTime - info.epoch) <= DAY_MS) live++;
     const along = rx * sx + ry * sy + rz * sz;
     const cx = ry * sz - rz * sy, cy = rz * sx - rx * sz, cz = rx * sy - ry * sx;
     if (along > 0 || cx * cx + cy * cy + cz * cz > EARTH_RADIUS_KM * EARTH_RADIUS_KM) lit++;
   }
-  return { positioned, sunlit: lit };
+  return { positioned, sunlit: lit, unlaunched, unplaceable, live };
 }
 
 function emit(anchored: boolean) {

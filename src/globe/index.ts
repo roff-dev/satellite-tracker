@@ -16,6 +16,9 @@ export interface CatalogStatus {
   positioned: number;
   /** Of those, how many are in sunlight. */
   sunlit: number;
+  unlaunched: number;
+  unplaceable: number;
+  live: number;
   done: boolean;
   failed: Dataset[];
   fetchedAt: string | null;
@@ -76,7 +79,7 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
   const satellites = createSatellites(reducedMotion);
   globe.inertial.add(satellites.points, satellites.glowPoints);
 
-  let status: CatalogStatus = { count: 0, positioned: 0, sunlit: 0, done: false, failed: [], fetchedAt: null, stale: false, unreachable: false, retryAt: null };
+  let status: CatalogStatus = { count: 0, positioned: 0, sunlit: 0, unlaunched: 0, unplaceable: 0, live: 0, done: false, failed: [], fetchedAt: null, stale: false, unreachable: false, retryAt: null };
   const update = (next: Partial<CatalogStatus>) => onStatus((status = { ...status, ...next }));
 
   let retries = 0;
@@ -97,7 +100,8 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
   const catalog = connectCatalog(clock.time, {
     onElements(message) {
       satellites.setElements(message);
-      update({ count: message.count, positioned: message.positioned, sunlit: message.sunlit });
+      const { count, positioned, sunlit, unlaunched, unplaceable, live } = message;
+      update({ count, positioned, sunlit, unlaunched, unplaceable, live });
     },
     onProgress({ count, done, failed, fetchedAt, stale }) {
       const unreachable = count === 0 && (done || status.unreachable);
@@ -220,8 +224,10 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
   addEventListener('keydown', onKey);
 
   const stopJump = clock.onJump((time) => catalog.jump(time));
+  // Line widths need the canvas size; reading it every frame would force a layout each time
+  const sized = new ResizeObserver(([entry]) => track.setResolution(entry!.contentRect.width, entry!.contentRect.height));
+  sized.observe(globe.canvas);
   const stopFrame = globe.onFrame(() => {
-    track.setResolution(globe.canvas.clientWidth, globe.canvas.clientHeight);
     catalog.tick(clock.time, clock.speed);
     satellites.update(clock.time, globe.sun, globe.pixelRatio, globe.glowScale);
     follow.update(performance.now(), clock.time);
@@ -269,6 +275,7 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
     dispose() {
       clearTimeout(retryTimer);
       clearInterval(describeTimer);
+      sized.disconnect();
       track.dispose();
       follow.dispose();
       stopPicking();

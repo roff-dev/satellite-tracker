@@ -151,6 +151,12 @@ export interface ElementsMessage {
   positioned: number;
   /** Of those, how many are in sunlight. */
   sunlit: number;
+  /** Not launched yet at the anchor time. */
+  unlaunched: number;
+  /** Launched, but their orbits can't be worked out for the anchor time. */
+  unplaceable: number;
+  /** Positioned objects within a day of their orbit's measurement. */
+  live: number;
   /** True when this answers an anchor request; false when new objects arrived. */
   anchored: boolean;
 }
