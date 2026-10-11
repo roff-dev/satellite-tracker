@@ -17,7 +17,7 @@ const DATASETS: Record<string, string[]> = {
 const STATUS_KEYS = ['payloads', 'debris', 'visual', 'stations', 'satcat', 'groups'];
 
 async function serveDataset(env: Env, parts: string[]): Promise<Response> {
-  const values = await Promise.all(parts.map((key) => env.ORBITS.getWithMetadata<Meta>(key, 'stream')));
+  const values = await Promise.all(parts.map(async (key) => ({ key, ...(await env.ORBITS.getWithMetadata<Meta>(key, 'stream')) })));
   const present = values.filter((v) => v.value);
   if (!present.length) {
     return new Response('No orbit data yet', { status: 503, headers: { 'Retry-After': '600', 'Cache-Control': 'no-store' } });
@@ -25,17 +25,20 @@ async function serveDataset(env: Env, parts: string[]): Promise<Response> {
   const oldest = present.map((v) => v.metadata?.fetchedAt ?? '').sort()[0] ?? '';
   let body: ReadableStream = present[0]!.value!;
   if (present.length > 1) {
-    // Concatenated stream by stream, never buffered or parsed; a newline between parts in case one lacks it
+    // Joined stream by stream, never buffered or parsed. A "# name" line introduces each part so the reader knows
+    // which list a row came from, and a newline closes it in case its source didn't
     const { readable, writable } = new TransformStream();
     void (async () => {
-      const newline = new TextEncoder().encode('\n');
-      for (const [i, { value }] of present.entries()) {
-        if (i) {
-          const writer = writable.getWriter();
-          await writer.write(newline);
-          writer.releaseLock();
-        }
+      const encoder = new TextEncoder();
+      const write = async (text: string) => {
+        const writer = writable.getWriter();
+        await writer.write(encoder.encode(text));
+        writer.releaseLock();
+      };
+      for (const { key, value } of present) {
+        await write(`# ${key}\n`);
         await value!.pipeTo(writable, { preventClose: true });
+        await write('\n');
       }
       await writable.close();
     })();

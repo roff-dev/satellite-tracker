@@ -20,7 +20,7 @@ for (const name of DATASETS) {
     const response = await fetch(`${origin}/api/${name}`, { signal: AbortSignal.timeout(30_000) });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const text = await response.text();
-    if (!text.startsWith('OBJECT_NAME,')) throw new Error('not orbit data');
+    if (!/^(OBJECT_NAME,|# )/.test(text)) throw new Error('not orbit data');
     await writeFile(`dist/snapshot/${name}.csv`, text);
     const at = response.headers.get('X-Fetched-At');
     if (at && (!fetchedAt || at < fetchedAt)) fetchedAt = at;
