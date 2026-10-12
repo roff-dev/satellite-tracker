@@ -11,7 +11,7 @@ import {
   type IUniform,
 } from 'three';
 import { STRIDE } from '../orbit/elements';
-import { KEY_GLSL, KEY_UNIFORMS_GLSL, ORBIT_GLSL } from './orbit.glsl';
+import { KEY_GLSL, KEY_UNIFORMS_GLSL, ORBIT_GLSL, SKY_GLSL } from './orbit.glsl';
 import type { QualitySettings } from './quality';
 
 type TrailDetail = QualitySettings['trails'];
@@ -41,6 +41,7 @@ const vertexShader = /* glsl */ `
 
   ${ORBIT_GLSL}
   ${KEY_GLSL}
+  ${SKY_GLSL}
 
   void main() {
     int kind = int(aX.y + 0.5);
@@ -48,6 +49,11 @@ const vertexShader = /* glsl */ `
     #ifdef PAYLOADS_ONLY
       hidden = hidden || kind >= 2;
     #endif
+    // Over a chosen place, judged where the object is now, so a tail is kept or dropped whole
+    if (!hidden && uSky > 1.5 && float(gl_InstanceID) != uSelected) {
+      vec3 now = toScene(orbitPosition(aOrbit, aMdot, aP, aQ, aX.x, uDt));
+      hidden = seen(now, inSunlight(now, uSun), aX.z) < uSky - 1.0;
+    }
     if (hidden) {
       gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
       return;

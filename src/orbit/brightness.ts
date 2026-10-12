@@ -34,15 +34,18 @@ export function estimateBrightness(type: ObjectType, rcs: number | undefined, si
   return { magnitude: fromClass ?? null, giant: false };
 }
 
-const GLINT_MIN = 0.35;
-/** Above 3 nothing gets bigger or brighter on screen; the extra range only decides which objects glow. */
-const GLINT_MAX = 8;
+/** The giants: the fit at 50 m² less the three magnitudes it runs short there, so at least this bright. */
+const GIANT_MAGNITUDE = -0.5;
 
-/** How strongly a sunlit object glints on the globe, relative to a magnitude-6 object. */
+/**
+ * Light from an object at 1,000 km, half lit, relative to a magnitude-6 one: 10^(−0.4(m − 6)), and 0 when there's
+ * no magnitude. The globe caps what it shows (nothing is drawn bigger past 3, or glows more past 8); the sky test
+ * needs the full range to tell what can be seen by eye.
+ */
 export function glintIntensity({ magnitude, giant }: Brightness) {
-  if (giant) return GLINT_MAX;
-  if (magnitude === null) return GLINT_MIN;
-  return Math.min(GLINT_MAX, Math.max(GLINT_MIN, 10 ** (-0.4 * (magnitude - 6))));
+  if (giant) return 10 ** (-0.4 * (GIANT_MAGNITUDE - 6));
+  if (magnitude === null) return 0;
+  return 10 ** (-0.4 * (magnitude - 6));
 }
 
 /** Measured RCS by NORAD ID, from the table packed at build time into /rcs.bin. */

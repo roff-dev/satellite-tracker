@@ -31,6 +31,30 @@ export const ORBIT_GLSL = /* glsl */ `
   }
 `;
 
+/**
+ * The sky over a chosen place, the twin of sky/observer.ts. Needs uSun declared. uSky: 0 for no place; 1 a place,
+ * with everything drawn; 2 only what's inside its dome; 3 only what can be seen there by eye.
+ */
+export const SKY_GLSL = /* glsl */ `
+  uniform float uSky;
+  uniform vec3 uObserver;
+  uniform vec3 uUp;
+
+  /**
+   * 0 outside the dome (at least 10° up, within 2,000 km of the ground), 1 inside it, 2 inside and bright enough to
+   * see by eye: sunlit, the Sun 6° down at the place, and magnitude 4.5 or brighter there. Glint is light at
+   * 1,000 km, half lit, relative to magnitude 6; range is in scene units, 6.371 thousand km each.
+   */
+  float seen(vec3 p, float lit, float glint) {
+    vec3 look = uObserver - p;
+    float range = length(look);
+    if (uSky < 0.5 || length(p) > 1.31392 || dot(look, uUp) > -0.173648 * range) return 0.0;
+    float c = clamp(dot(uSun, look) / range, -1.0, 1.0);
+    float phase = (PI - acos(c)) * c + sqrt(1.0 - c * c);
+    return lit > 0.5 && dot(uSun, uUp) < -0.104528 && glint * phase >= 161.59 * range * range ? 2.0 : 1.0;
+  }
+`;
+
 export const KEY_UNIFORMS_GLSL = /* glsl */ `
   uniform float uColourBy;
   uniform float uFilter;

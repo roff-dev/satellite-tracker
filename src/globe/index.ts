@@ -58,7 +58,15 @@ export interface Described {
 export interface SkyCounts {
   above: number;
   sunlit: number;
+  /** Bright enough to see by eye from the place. */
+  seen: number;
+  /** The Sun is far enough down there for anything to be seen by eye. */
+  dark: boolean;
 }
+
+/** What the globe shows while a place's sky is on: everything, only what's inside its dome, or only what's seen by eye. */
+export type SkyShowing = 'all' | 'dome' | 'eye';
+const SKY_MODES: Record<SkyShowing, number> = { all: 1, dome: 2, eye: 3 };
 
 /** How often the count inside the dome is brought up to date (it follows playback). */
 const SKY_MS = 1000;
@@ -214,6 +222,7 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
     if (launch && previous !== now) void showLaunch(false);
     selection = next;
     satellites.setSelected(selectedSlot());
+    showSkyView();
     clearInterval(describeTimer);
     traced = null;
     track.clear();
@@ -261,7 +270,12 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
   sized.observe(globe.canvas);
   // The sky over a chosen place: its dome and marker on the turning Earth, the rings, and the count inside
   let sky: { lat: number; lon: number; place: Vector3; up: Vector3; dome: Dome | null } | null = null;
+  let skyMode = SKY_MODES.dome;
   let skyTimer: ReturnType<typeof setInterval> | undefined;
+  /** Taps find what the sky shows, and always the selected object, which is drawn wherever it is. */
+  function showSkyView() {
+    catalog.setSkyView(sky ? { lat: sky.lat, lon: sky.lon, mode: skyMode, keep: selectedSlot() } : null);
+  }
   let domeModule: Promise<typeof import('./dome')> | null = null;
   const skyAt = new Vector3();
   const skyUp = new Vector3();
@@ -271,8 +285,9 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
    */
   const placeNow = () => (sky ? skyAt.copy(sky.place).applyAxisAngle(NORTH, globe.earthFixed.rotation.y) : null);
 
-  async function setSky(where: { lat: number; lon: number } | null) {
+  async function setSky(where: { lat: number; lon: number } | null, showing: SkyShowing = 'dome') {
     clearInterval(skyTimer);
+    skyMode = SKY_MODES[showing];
     if (sky?.dome) {
       globe.earthFixed.remove(sky.dome.group);
       sky.dome.dispose();
@@ -280,10 +295,12 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
     sky = null;
     satellites.setSky(null);
     onSky(null);
+    showSkyView();
     if (!where) return;
     // Earth-fixed km to scene units: (x, z, −y)
     const { position: p, up: u } = observerAt(where.lat, where.lon);
     const current = (sky = { ...where, place: new Vector3(p[0], p[2], -p[1]).divideScalar(6371), up: new Vector3(u[0], u[2], -u[1]), dome: null as Dome | null });
+    showSkyView();
     globe.flyTo(placeNow()!);
     const count = () => void catalog.sky(where.lat, where.lon, clock.time).then((counts) => sky === current && onSky(counts));
     count();
@@ -299,7 +316,7 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
   const stopFrame = globe.onFrame((seconds) => {
     if (sky) {
       skyUp.copy(sky.up).applyAxisAngle(NORTH, globe.earthFixed.rotation.y);
-      satellites.setSky(skyAt.copy(sky.place).applyAxisAngle(NORTH, globe.earthFixed.rotation.y), skyUp);
+      satellites.setSky(skyAt.copy(sky.place).applyAxisAngle(NORTH, globe.earthFixed.rotation.y), skyUp, skyMode);
       sky.dome?.update(seconds, globe.pixelRatio);
     }
     catalog.tick(clock.time, clock.speed);
@@ -350,20 +367,27 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
     setInsets: globe.setInsets,
     /** Show the sky over a place (the dome, the marker and the count inside), or none. */
     setSky,
+    /** Everything, only what's inside the dome, or only what can be seen there by eye. */
+    setSkyShowing(showing: SkyShowing) {
+      skyMode = SKY_MODES[showing];
+      showSkyView();
+    },
     /** The orbits of the space stations, for the pass search. */
     stationOrbits: (norads: number[]) => catalog.orbits(norads),
     /**
      * Watch a pass: the timeline goes to a minute before it and plays at a minute a second, the station is picked
-     * out with its orbit and track, and the view turns to the place, close enough for the dome to fill it.
+     * out with its orbit and track, and the view turns to the place, close enough for the dome to fill it. Resolves
+     * with whether the station was found.
      */
     async watch(norad: number, start: number) {
-      if (!sky) return;
+      if (!sky) return false;
       clock.set(start - 60_000);
       clock.setSpeed(60);
       clock.setPaused(false);
       const candidate = await catalog.find(norad);
       if (candidate) select({ candidates: [candidate], index: 0 });
       globe.flyTo(placeNow()!, globe.restDistance * WATCH_CLOSER);
+      return candidate !== null;
     },
     dispose() {
       clearTimeout(retryTimer);

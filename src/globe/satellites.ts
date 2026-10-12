@@ -13,7 +13,7 @@ import {
 } from 'three';
 import { STRIDE, keplerPosition } from '../orbit/elements';
 import { GLOW_LAYER } from './glow';
-import { KEY_GLSL, KEY_UNIFORMS_GLSL, ORBIT_GLSL } from './orbit.glsl';
+import { KEY_GLSL, KEY_UNIFORMS_GLSL, ORBIT_GLSL, SKY_GLSL } from './orbit.glsl';
 import { createTrails } from './trails';
 import type { QualitySettings } from './quality';
 import { ALL_KINDS, type ElementsMessage } from '../data/protocol';
@@ -32,10 +32,6 @@ const vertexShader = /* glsl */ `
   uniform float uHidden;
   uniform float uSolo;
   uniform int uKinds;
-  // The dome over a chosen place, when one is shown: where it stands and which way is up
-  uniform float uSky;
-  uniform vec3 uObserver;
-  uniform vec3 uUp;
   ${KEY_UNIFORMS_GLSL}
 
   in float aMdot;
@@ -51,6 +47,7 @@ const vertexShader = /* glsl */ `
 
   ${ORBIT_GLSL}
   ${KEY_GLSL}
+  ${SKY_GLSL}
 
   void hide() {
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
@@ -81,6 +78,12 @@ const vertexShader = /* glsl */ `
       hide();
       return;
     }
+    // Over a chosen place, only what its sky shows, if that's all that's asked for
+    float sky = seen(p, lit, glint);
+    if (sky < uSky - 1.0 && float(gl_VertexID) != uSelected) {
+      hide();
+      return;
+    }
     float size = kind <= 1 ? 2.5 : kind == 2 ? 3.0 : 1.5;
     float opacity = kind == 1 ? 0.6 : 1.0;
     // More than a week from when its orbit was measured, its position is a rough guide: drawn at half strength
@@ -93,7 +96,7 @@ const vertexShader = /* glsl */ `
     // clipping to white; the range above 3 only picks out the truly bright objects that glow
     float strength = mix(0.35, 1.1, smoothstep(0.35, 3.0, glint));
     vec3 sunlit = key * strength * (0.3 + 0.7 * phase);
-    size *= mix(1.0, 0.85 + 0.15 * min(glint, 3.0), lit);
+    size *= mix(1.0, 0.85 + 0.15 * clamp(glint, 0.35, 3.0), lit);
 
     // The loading wave: objects appear as it passes outward through their shell, briefly bright at its crest
     float radius = length(r);
@@ -120,7 +123,7 @@ const vertexShader = /* glsl */ `
         vColour = max(vColour, sunlit * 0.9);
       }
       // Inside the dome over the chosen place (at least 10° up, within 2,000 km of the ground): ringed
-      vRing = uSky > 0.5 && vSelected < 0.5 && length(p) <= 1.31392 && dot(normalize(p - uObserver), uUp) >= 0.173648 ? 1.0 : 0.0;
+      vRing = sky > 0.5 && vSelected < 0.5 ? 1.0 : 0.0;
       if (vRing > 0.5) size = max(size, 7.0);
     #endif
 
@@ -289,9 +292,12 @@ export function createSatellites(reducedMotion: boolean, trailDetail: QualitySet
     setSolo(on: boolean) {
       uniforms.uSolo.value = on ? 1 : 0;
     },
-    /** Ring what's inside the dome over a place: where it stands and its up, in scene space; null for no dome. */
-    setSky(observer: Vector3 | null, up?: Vector3) {
-      uniforms.uSky.value = observer ? 1 : 0;
+    /**
+     * The sky over a place: where it stands and its up, in scene space, and what to draw (1 everything, with what's
+     * inside the dome ringed; 2 only what's inside; 3 only what can be seen there by eye); null for no place.
+     */
+    setSky(observer: Vector3 | null, up?: Vector3, mode = 1) {
+      uniforms.uSky.value = observer ? mode : 0;
       if (observer) uniforms.uObserver.value.copy(observer);
       if (up) uniforms.uUp.value.copy(up);
     },
