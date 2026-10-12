@@ -107,7 +107,7 @@
         }}
         onblur={() => setTimeout(() => ((open = false), compact && !query && (expanded = false)), 150)}
         type="search"
-        placeholder="Search by name or number"
+        placeholder="Find by name or number"
         aria-label="Search satellites by name, catalogue number or international designator"
         role="combobox"
         aria-expanded={open && searched}
@@ -141,9 +141,10 @@
 </div>
 
 <style>
+  /* On wide screens the field and the two buttons beside it span the same 22rem as the menus they open */
   .search {
     position: relative;
-    width: 18rem;
+    width: calc(22rem - 2 * 44px - 2 * var(--space-2));
   }
 
   .search.compact {
@@ -169,6 +170,7 @@
     padding: 0 var(--space-2) 0 var(--space-3);
     color: var(--muted);
     isolation: isolate;
+    transition: color 0.2s;
   }
 
   .field::before {
@@ -180,14 +182,31 @@
     clip-path: var(--facet-cut);
   }
 
-  /* The lit facet edge moves to the field when it has focus */
+  /* Focused, the field's facet lights and a thin amber edge draws in along its foot, up to the cut corner; the
+     caret shows where you type, so it needs nothing louder */
+  .field::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: var(--chamfer);
+    bottom: 0;
+    height: 2px;
+    background: var(--glint);
+    scale: 0 1;
+    transform-origin: left;
+    transition: scale 0.38s var(--spring);
+  }
+
+  .field:focus-within {
+    color: var(--ink);
+  }
+
   .field:focus-within::before {
     background: linear-gradient(155deg, var(--raise) 0 30%, var(--deck) 30% 100%);
   }
 
-  .field:focus-within {
-    outline: 2px solid var(--glint);
-    outline-offset: 3px;
+  .field:focus-within::after {
+    scale: 1 1;
   }
 
   input {
@@ -232,6 +251,12 @@
     list-style: none;
     background: linear-gradient(155deg, var(--raise) 0 12%, var(--deck) 12% 100%);
     clip-path: var(--facet-cut);
+  }
+
+  /* Wide screens: results open as wide as the menus beside the field, lined up with them */
+  .search:not(.compact) ul {
+    right: auto;
+    width: 22rem;
   }
 
   li button {
