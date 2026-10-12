@@ -128,8 +128,8 @@
         {#each results as result, i (result.slot)}
           <li id="result-{i}" role="option" aria-selected={i === active} class:active={i === active}>
             <button type="button" tabindex="-1" onmousedown={(e) => e.preventDefault()} onclick={() => choose(result)} onmouseenter={() => (active = i)}>
-              <span class="name">{result.name}</span>
-              <span class="meta">{describe(result)}</span>
+              <span class="name">{result.match ?? result.name}</span>
+              <span class="meta">{result.match ? `Docked with ${result.name}` : describe(result)}</span>
             </button>
           </li>
         {:else}

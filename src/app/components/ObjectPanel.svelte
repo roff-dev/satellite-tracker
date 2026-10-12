@@ -185,6 +185,13 @@
           </section>
         {/if}
 
+        {#if details.docked.length}
+          <section aria-labelledby="docked-title">
+            <h3 id="docked-title">Docked with it</h3>
+            <p>{details.docked.join(', ')}</p>
+          </section>
+        {/if}
+
         <section aria-labelledby="brightness-title">
           <h3 id="brightness-title">How bright</h3>
           {#if details.giant}
