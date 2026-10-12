@@ -37,6 +37,7 @@ import { orbitNumbers } from '../orbit/describe';
 import { STATION, VISUAL, findNearby } from '../data/pick';
 import { EPOCH_DAY, GLINT, GROUPS, KIND, LAUNCH_DAY, STRIDE, keplerPosition, writeElements } from '../orbit/elements';
 import { DARK_SUN_SINE, brightEnough, inDome, observerAt, toEarthFixed, type Observer } from '../sky/observer';
+import { foldTwins, orbitKey } from '../data/twins';
 import { decodeRcsTable, estimateBrightness, glintIntensity, type ObjectType } from '../orbit/brightness';
 
 const scope = self as unknown as DedicatedWorkerGlobalScope;
@@ -82,6 +83,10 @@ const listedBits = new Map<number, number>();
 let highlighted: string | null = null;
 /** Kinds switched on, one bit per kind; the rest can't be picked. */
 let shownKinds: number = ALL_KINDS;
+/** Objects tracked as one with another, docked or attached, by slot: the slot of the one they're part of. */
+let hostOf = new Map<number, number>();
+/** The other way: each of those hosts' docked slots, in catalogue order. */
+let dockedAt = new Map<number, number[]>();
 const search = createSearch(objects);
 let bulk: Awaited<ReturnType<typeof createBulk>> | null = null;
 let bulkStale = true;
@@ -152,6 +157,8 @@ function store(slot: number, position: ArrayLike<number> | null, velocity: Array
   anchorPositions[slot * 3] = position[i]!;
   anchorPositions[slot * 3 + 1] = position[i + 1]!;
   anchorPositions[slot * 3 + 2] = position[i + 2]!;
+  // Part of another object: drawn, tapped and counted as that one
+  if (hostOf.has(slot)) master[o] = 0;
 }
 
 function anchorOne(slot: number, date: Date) {
@@ -194,6 +201,7 @@ function countLight() {
   let live = 0;
   const kinds = [0, 0, 0, 0];
   for (let slot = 0; slot < recs.length; slot++) {
+    if (hostOf.has(slot)) continue;
     const rx = anchorPositions[slot * 3]!, ry = anchorPositions[slot * 3 + 1]!, rz = anchorPositions[slot * 3 + 2]!;
     const info = objects[slot]!;
     if (info.launchDay > day) {
@@ -278,6 +286,26 @@ function addRow(row: Row, section: string) {
   anchorOne(slot, new Date(anchorTime));
 }
 
+/**
+ * A station's modules and the craft docked to it are published with the station's own orbit. Each becomes part of
+ * the one it's docked with: not drawn, tapped or counted on its own, found as it, and listed in its panel. Docked
+ * craft come apart again by themselves once they leave and get an orbit of their own.
+ */
+function fold() {
+  const next = foldTwins(
+    objects.map((info, slot) => orbitKey(info.epoch, recs[slot]!)),
+    objects.map((info) => info.norad),
+  );
+  const previous = hostOf;
+  hostOf = next;
+  const date = new Date(anchorTime);
+  for (const slot of previous.keys()) if (!next.has(slot)) anchorOne(slot, date);
+  for (const slot of next.keys()) master[slot * STRIDE] = 0;
+  dockedAt = new Map();
+  for (const [slot, host] of next) dockedAt.set(host, [...(dockedAt.get(host) ?? []), slot]);
+  for (const slots of dockedAt.values()) slots.sort((a, b) => objects[a]!.norad - objects[b]!.norad);
+}
+
 const loaded = new Set<Dataset>();
 let failed: Dataset[] = [];
 let fetchedAt: string | null = null;
@@ -353,6 +381,8 @@ async function loadCatalogue() {
     } catch {
       failed.push(name);
     }
+    // Once a dataset is in, so groups that span two datasets fold once both halves are
+    fold();
     emit(false);
     progress(false);
     if (name === 'bright') {
@@ -495,6 +525,7 @@ function describe({ id, slot, time, paths }: DescribeRequest) {
       giant: brightness.giant,
       working: info.type === 'payload' && operational ? operational.has(info.norad) : null,
       orbit: orbitNumbers(rec),
+      docked: (dockedAt.get(slot) ?? []).map((docked) => objects[docked]!.name),
     },
     now: whereabouts(rec, time),
     paths: traced,
@@ -582,20 +613,32 @@ function orbitsOf(id: number, norads: number[]) {
 }
 
 function find(id: number, norad: number) {
-  const slot = slotOf.get(norad);
+  const found = slotOf.get(norad);
+  // A docked object is found as the one it's part of
+  const slot = found === undefined ? undefined : (hostOf.get(found) ?? found);
   const info = slot === undefined ? undefined : objects[slot];
   const message: FoundMessage = {
     type: 'found',
     id,
-    candidate: info ? { slot: slot!, norad, name: info.name, type: info.type, station: (info.lists & STATION) !== 0, distance: 0 } : null,
+    candidate: info ? { slot: slot!, norad: info.norad, name: info.name, type: info.type, station: (info.lists & STATION) !== 0, distance: 0 } : null,
   };
   scope.postMessage(message);
 }
 
 function searchFor(id: number, query: string) {
-  const results: SearchResult[] = search(query).map((slot) => {
+  const hits = search(query);
+  const direct = new Set(hits);
+  const listed = new Set<number>();
+  const results: SearchResult[] = [];
+  for (const hit of hits) {
+    // A docked object is found as the one it's part of, under its own name, unless that one turned up itself
+    const host = hostOf.get(hit);
+    if (host !== undefined && direct.has(host)) continue;
+    const slot = host ?? hit;
+    if (listed.has(slot)) continue;
+    listed.add(slot);
     const info = objects[slot]!;
-    return {
+    results.push({
       slot,
       norad: info.norad,
       name: info.name,
@@ -605,8 +648,9 @@ function searchFor(id: number, query: string) {
       cospar: info.cospar,
       country: info.country,
       orbitClass: orbitNumbers(recs[slot]!).orbitClass,
-    };
-  });
+      match: host === undefined ? null : objects[hit]!.name,
+    });
+  }
   scope.postMessage({ type: 'searched', id, results });
 }
 

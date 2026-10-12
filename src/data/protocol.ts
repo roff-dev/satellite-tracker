@@ -39,6 +39,8 @@ export interface SearchResult extends Candidate {
   cospar: string;
   country: string;
   orbitClass: OrbitClass;
+  /** The name searched for, when it's docked with this object rather than this object itself. */
+  match: string | null;
 }
 
 /** Everything the panel shows about one object, at one moment. */
@@ -71,6 +73,8 @@ export interface ObjectDetails {
   /** For payloads: whether it still works, once that's known. */
   working: boolean | null;
   orbit: OrbitNumbers;
+  /** What's docked with it, tracked as part of it: a station's modules and visiting craft. */
+  docked: string[];
 }
 
 export interface Whereabouts {
