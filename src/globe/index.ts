@@ -1,6 +1,6 @@
 import { clock } from '../time/clock';
 import { connectCatalog } from '../data/catalog';
-import { Vector3 } from 'three';
+import { AdditiveBlending, BufferAttribute, BufferGeometry, Color, DoubleSide, GLSL3, Group, Mesh, Points, ShaderMaterial, Vector3 } from 'three';
 import type { Candidate, Dataset, ObjectDetails, Whereabouts } from '../data/protocol';
 import { attachPicking } from './picking';
 import { createTrack } from './track';
@@ -291,7 +291,8 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
     domeModule ??= import('./dome');
     const { createDome } = await domeModule;
     if (sky !== current) return;
-    current.dome = createDome(current.place, current.up, reducedMotion);
+    const three = { AdditiveBlending, BufferAttribute, BufferGeometry, Color, DoubleSide, GLSL3, Group, Mesh, Points, ShaderMaterial, Vector3 };
+    current.dome = createDome(three, current.place, current.up, reducedMotion);
     globe.earthFixed.add(current.dome.group);
   }
 

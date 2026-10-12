@@ -1,12 +1,16 @@
-import { AdditiveBlending, BufferAttribute, BufferGeometry, Color, DoubleSide, GLSL3, Group, Mesh, Points, ShaderMaterial, Vector3 } from 'three';
+import type * as Three from 'three';
+
+/**
+ * three's classes, handed over by the globe that already has them. Importing three here instead would make the
+ * bundler split it into a chunk of its own, shared with the globe, which compresses worse than one chunk.
+ */
+export type DomeKit = Pick<typeof Three, 'AdditiveBlending' | 'BufferAttribute' | 'BufferGeometry' | 'Color' | 'DoubleSide' | 'GLSL3' | 'Group' | 'Mesh' | 'Points' | 'ShaderMaterial' | 'Vector3'>;
 
 /** The dome's roof, 2,000 km up, and its edge, 10° above the horizon. */
 const ROOF = 1 + 2000 / 6371;
 const LOWEST = (10 * Math.PI) / 180;
 const AROUND = 72;
 const UP_TO_ZENITH = 10;
-
-const token = (name: string) => new Color(getComputedStyle(document.documentElement).getPropertyValue(name).trim());
 
 const domeVertex = /* glsl */ `
   #include <common>
@@ -72,8 +76,9 @@ const markerFragment = /* glsl */ `
  * 10° above its horizon and within 2,000 km of the ground. Positions are Earth-fixed scene units; up is the
  * ellipsoid's normal there.
  */
-export function createDome(place: Vector3, up: Vector3, reducedMotion: boolean) {
-  const glint = token('--glint');
+export function createDome(three: DomeKit, place: Three.Vector3, up: Three.Vector3, reducedMotion: boolean) {
+  const { AdditiveBlending, BufferAttribute, BufferGeometry, Color, DoubleSide, GLSL3, Group, Mesh, Points, ShaderMaterial, Vector3 } = three;
+  const glint = new Color(getComputedStyle(document.documentElement).getPropertyValue('--glint').trim());
   const group = new Group();
 
   // East and north at the place, so bearings can be laid out around it
