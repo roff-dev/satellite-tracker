@@ -138,7 +138,8 @@
     top: calc(var(--space-4) + env(safe-area-inset-top) + 44px + var(--space-2));
     right: var(--gutter);
     width: min(22rem, calc(100vw - 2 * var(--gutter)));
-    max-height: calc(100svh - 6rem);
+    /* Clear of the byline at the foot of a phone held sideways */
+    max-height: calc(100svh - 7.5rem - env(safe-area-inset-top));
     overflow-y: auto;
     padding: var(--space-4);
     background: linear-gradient(155deg, var(--raise) 0 14%, var(--deck) 14% 100%);

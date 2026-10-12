@@ -287,25 +287,27 @@
     clip-path: polygon(var(--chamfer) 0, calc(100% - var(--chamfer)) 0, 100% var(--chamfer), 100% 100%, 0 100%, 0 var(--chamfer));
   }
 
+  /* --corner-room keeps the heading clear of the corner buttons; content lower down may reclaim it */
   header {
+    --corner-room: 3.25rem;
     position: relative;
     flex: none;
-    padding-right: 3.25rem;
-    touch-action: none;
+    padding-right: var(--corner-room);
   }
 
   header.paired {
-    padding-right: 6.5rem;
+    --corner-room: 6.5rem;
   }
 
   .sheet header {
+    --corner-room: 0px;
     padding-top: var(--space-4);
-    padding-right: 0;
     cursor: grab;
+    touch-action: none;
   }
 
   .sheet header.paired {
-    padding-right: 3.25rem;
+    --corner-room: 3.25rem;
   }
 
   /* Widened by a chip row's overhang either side, so that row's focus rings fit without the list panning sideways */
@@ -316,6 +318,19 @@
     padding: 0 var(--space-1) calc(var(--space-6) + env(safe-area-inset-bottom));
     overflow: hidden auto;
     overscroll-behavior: contain;
+  }
+
+  /* A phone on its side: the header alone can be taller than the room above the timeline, so the whole panel scrolls */
+  @media (max-height: 500px) {
+    .panel:not(.sheet) {
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+
+    .panel:not(.sheet) .body {
+      flex: none;
+      overflow: visible;
+    }
   }
 
   .grip {
