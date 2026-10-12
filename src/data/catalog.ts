@@ -1,4 +1,4 @@
-import type { Candidate, CatalogEvent, CatalogRequest, CountedMessage, DescribedMessage, ElementsMessage, PickRequest, ProgressMessage, SearchResult, SearchedMessage } from './protocol';
+import type { Candidate, CatalogEvent, CatalogRequest, CountedMessage, DescribedMessage, ElementsMessage, OrbitsMessage, PickRequest, ProgressMessage, SearchResult, SearchedMessage, SkyCountMessage } from './protocol';
 
 type Reply = Extract<CatalogEvent, { id: number }>;
 /** A request that expects a reply, before its id is attached. */
@@ -120,6 +120,15 @@ export function connectCatalog(startTime: number, handlers: CatalogHandlers) {
     /** Fetch again whatever failed to load. */
     retry() {
       send({ type: 'retry' });
+    },
+    /** Shown objects inside the dome over a place at a moment, and how many are sunlit. */
+    async sky(lat: number, lon: number, time: number) {
+      const { above, sunlit } = await ask<SkyCountMessage>({ type: 'sky', lat, lon, time });
+      return { above, sunlit };
+    },
+    /** The orbits of a few objects by catalogue number (the ones loaded). */
+    async orbits(norads: number[]) {
+      return (await ask<OrbitsMessage>({ type: 'orbits', norads })).orbits;
     },
     /** The kinds being shown, one bit per kind, so taps only find what's drawn. */
     setKinds(mask: number) {

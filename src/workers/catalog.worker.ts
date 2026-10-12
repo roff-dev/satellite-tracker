@@ -23,8 +23,10 @@ import {
   type ElementsMessage,
   type FoundMessage,
   type PickRequest,
+  type OrbitsMessage,
   type PickedMessage,
   type ProgressMessage,
+  type SkyCountMessage,
   type SearchResult,
   type Whereabouts,
 } from '../data/protocol';
@@ -32,7 +34,8 @@ import { CONSTELLATIONS, FILTER, GEO_BIT, HIGHLIGHT_BIT, LISTED, STATION_BIT, la
 import { createSearch } from '../data/search';
 import { orbitNumbers } from '../orbit/describe';
 import { STATION, VISUAL, findNearby } from '../data/pick';
-import { EPOCH_DAY, GLINT, GROUPS, KIND, LAUNCH_DAY, STRIDE, writeElements } from '../orbit/elements';
+import { EPOCH_DAY, GLINT, GROUPS, KIND, LAUNCH_DAY, STRIDE, keplerPosition, writeElements } from '../orbit/elements';
+import { inDome, observerAt, toEarthFixed } from '../sky/observer';
 import { decodeRcsTable, estimateBrightness, glintIntensity, type ObjectType } from '../orbit/brightness';
 
 const scope = self as unknown as DedicatedWorkerGlobalScope;
@@ -493,6 +496,48 @@ function describe({ id, slot, time, paths }: DescribeRequest) {
   scope.postMessage(message, transfer);
 }
 
+const teme = new Float64Array(3);
+const fixed = new Float64Array(3);
+
+/**
+ * Shown objects inside the dome over a place, and how many of those are sunlit, with the shader's own orbit maths
+ * at the moment asked, so the count matches the rings drawn.
+ */
+function skyCount(id: number, lat: number, lon: number, time: number) {
+  const observer = observerAt(lat, lon);
+  const date = new Date(time);
+  const g = gstime(date);
+  const { x, y, z } = sunPos(jday(date)).rsun;
+  const n = Math.hypot(x, y, z);
+  const sx = x / n, sy = y / n, sz = z / n;
+  const dt = (time - anchorTime) / 1000;
+  const day = time / DAY_MS;
+  let above = 0;
+  let sunlit = 0;
+  for (let slot = 0; slot < recs.length; slot++) {
+    const o = slot * STRIDE;
+    if (!(master[o]! > 0) || objects[slot]!.launchDay > day || !((shownKinds >> master[o + KIND]!) & 1)) continue;
+    keplerPosition(master, o, dt, teme);
+    if (!inDome(observer, toEarthFixed(teme, g, fixed))) continue;
+    above++;
+    const along = teme[0]! * sx + teme[1]! * sy + teme[2]! * sz;
+    const cx = teme[1]! * sz - teme[2]! * sy, cy = teme[2]! * sx - teme[0]! * sz, cz = teme[0]! * sy - teme[1]! * sx;
+    if (along > 0 || cx * cx + cy * cy + cz * cz > EARTH_RADIUS_KM * EARTH_RADIUS_KM) sunlit++;
+  }
+  const message: SkyCountMessage = { type: 'skyCount', id, above, sunlit };
+  scope.postMessage(message);
+}
+
+function orbitsOf(id: number, norads: number[]) {
+  const orbits: OrbitsMessage['orbits'] = [];
+  for (const norad of norads) {
+    const slot = slotOf.get(norad);
+    if (slot !== undefined && recs[slot]) orbits.push({ norad, name: objects[slot]!.name, satrec: recs[slot]! });
+  }
+  const message: OrbitsMessage = { type: 'orbits', id, orbits };
+  scope.postMessage(message);
+}
+
 function find(id: number, norad: number) {
   const slot = slotOf.get(norad);
   const info = slot === undefined ? undefined : objects[slot];
@@ -591,6 +636,8 @@ scope.onmessage = (event: MessageEvent<CatalogRequest>) => {
     return;
   }
   if (request.type === 'pick') return pick(request);
+  if (request.type === 'sky') return skyCount(request.id, request.lat, request.lon, request.time);
+  if (request.type === 'orbits') return orbitsOf(request.id, request.norads);
   if (request.type === 'describe') return describe(request);
   if (request.type === 'find') return find(request.id, request.norad);
   if (request.type === 'search') return searchFor(request.id, request.query);

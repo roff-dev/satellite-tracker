@@ -1,5 +1,6 @@
 import type { ObjectType } from '../orbit/brightness';
 import type { OrbitClass, OrbitNumbers } from '../orbit/describe';
+import type { SatRec } from 'satellite.js';
 
 /** Object kinds as stored in the element buffer and read by the shader. */
 export const Kind = { Active: 0, Dead: 1, Rocket: 2, Debris: 3 } as const;
@@ -17,6 +18,10 @@ export type CatalogRequest =
   | { type: 'retry' }
   /** The kinds being shown, one bit per kind; hidden kinds can't be picked. */
   | { type: 'kinds'; mask: number }
+  /** How many shown objects are inside the dome over a place at a moment (ms), and how many of those are sunlit. */
+  | { type: 'sky'; id: number; lat: number; lon: number; time: number }
+  /** The orbits of a few objects by catalogue number, for the pass search in its own worker. */
+  | { type: 'orbits'; id: number; norads: number[] }
   | PickRequest
   | DescribeRequest
   /** Look an object up by its catalogue number, for links that name one. */
@@ -106,6 +111,20 @@ export interface CountedMessage {
   count: number;
 }
 
+export interface SkyCountMessage {
+  type: 'skyCount';
+  id: number;
+  above: number;
+  sunlit: number;
+}
+
+export interface OrbitsMessage {
+  type: 'orbits';
+  id: number;
+  /** Only the ones that are loaded. */
+  orbits: { norad: number; name: string; satrec: SatRec }[];
+}
+
 export interface FoundMessage {
   type: 'found';
   id: number;
@@ -183,4 +202,4 @@ export interface ProgressMessage {
   done: boolean;
 }
 
-export type CatalogEvent = ElementsMessage | ProgressMessage | PickedMessage | DescribedMessage | FoundMessage | SearchedMessage | CountedMessage;
+export type CatalogEvent = ElementsMessage | ProgressMessage | PickedMessage | DescribedMessage | FoundMessage | SearchedMessage | CountedMessage | SkyCountMessage | OrbitsMessage;
