@@ -17,7 +17,7 @@ export interface Globe {
   /** Turns with the Earth: things fixed to the ground go here. */
   earthFixed: Group;
   /** Turns the view to face a point in space (scene units). */
-  flyTo(point: Vector3): void;
+  flyTo(point: Vector3, distance?: number): void;
   /** Hand the camera to something else (following an object), and take it back. */
   suspendCamera(): void;
   resumeCamera(): void;
@@ -170,7 +170,7 @@ export function createGlobe(host: HTMLElement): Globe {
     canvas: renderer.domElement,
     inertial,
     earthFixed: earthFrame,
-    flyTo: (point: Vector3) => view.flyTo(point),
+    flyTo: (point: Vector3, distance?: number) => view.flyTo(point, distance),
     suspendCamera: () => view.suspend(),
     resumeCamera: () => view.resume(),
     get restDistance() {

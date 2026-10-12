@@ -50,6 +50,11 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
   let viewHeight = 1;
   /** Screen space the controls and panels cover, CSS px: the globe centres itself in what's left. */
   let insets = { right: 0, bottom: 0, top: 0 };
+  /**
+   * What the framing centres in that space: a point this far from the Earth's centre, seen from this far away (0 for
+   * the resting distance). The offset moves the camera sideways, so it only centres things at the depth it's sized for.
+   */
+  let framing = { distance: 0, depth: 0 };
 
   /** Distance at which the globe fills FILL of the narrower screen dimension. */
   const restDistance = () => {
@@ -73,6 +78,10 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
     const y = aspect < 0.8 ? -portraitDrop * halfHeight : 0;
     void controls.setFocalOffset(x, y, 0, transition);
   };
+  const frame = (transition: boolean) => {
+    const distance = framing.distance || rest;
+    applyFocalOffset(distance - framing.depth, transition);
+  };
   let arriving = false;
   /** Another part of the globe is flying the camera (following an object); the controls stand aside. */
   let suspended = false;
@@ -84,7 +93,7 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
     if (exploring) return;
     exploring = true;
     // The headline steps aside, so the globe can take the middle
-    applyFocalOffset(rest, !reducedMotion);
+    frame(!reducedMotion);
   };
   const markInteracted = () => {
     if (interacted) return;
@@ -177,15 +186,17 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
       camera.updateProjectionMatrix();
       rest = restDistance();
       if (arriving) return;
-      applyFocalOffset(rest, false);
+      frame(false);
       // Rotating a phone before exploring re-frames the globe
       if (!interacted && controls.distance > 1.2) void controls.dollyTo(rest, false);
     },
-    /** Turns the view to face a point in space (scene units), keeping the zoom; ends the arrival if it's still going. */
-    flyTo(point: Vector3) {
-      const distance = arriving ? rest : controls.distance;
+    /** Turns the view to face a point in space (scene units), keeping the zoom unless given a distance; ends the arrival if it's still going. */
+    flyTo(point: Vector3, distance = arriving ? rest : controls.distance) {
       arriving = false;
       markInteracted();
+      // The point itself, not the Earth's centre behind it, lands in the middle of the free space
+      framing = { distance, depth: Math.min(point.length(), distance * 0.75) };
+      frame(!reducedMotion);
       tmp.copy(point).normalize().multiplyScalar(distance);
       void controls.setLookAt(tmp.x, tmp.y, tmp.z, 0, 0, 0, !reducedMotion);
     },
@@ -214,7 +225,7 @@ export function createCamera(dom: HTMLElement, reducedMotion: boolean) {
       if (right === insets.right && bottom === insets.bottom && top === insets.top) return;
       insets = { right, bottom, top };
       // The framing offset is independent of where the camera is, so it can change mid-arrival too
-      applyFocalOffset(rest, true);
+      frame(true);
     },
     dispose() {
       controls.dispose();
