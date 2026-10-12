@@ -43,7 +43,15 @@
       <p class="ids">{placeDetail(sky.place!)}</p>
       <p class="count">
         {#if sky.counts}
-          <span class="figure">{number.format(sky.counts.above)}</span> above you, <span class="figure lit">{number.format(sky.counts.sunlit)}</span> in sunlight.
+          {@const { above, sunlit } = sky.counts}
+          {#if above === 0}
+            Nothing shown is above you.
+          {:else}
+            <!-- By day everything above is lit, so "all" reads better than the same number twice -->
+            <span class="figure">{number.format(above)}</span> above you,
+            {#if sunlit === above}<span class="figure lit">all</span>{:else if sunlit === 0}none{:else}<span class="figure lit">{number.format(sunlit)}</span>{/if}
+            in sunlight.
+          {/if}
         {:else}
           Counting what’s above you…
         {/if}
@@ -80,18 +88,19 @@
     margin: 0 0 var(--space-3);
   }
 
-  .lit {
+  .count .lit {
     color: var(--glint);
   }
 
-  /* A station's next pass: a lit facet card to tap, ending in an amber "Watch" */
+  /* A station's next pass: a lit facet card to tap, ending in an amber "Watch". In the header it sits below the
+     close button, so it takes back that button's room and lines up with the sections under it */
   .pass {
     position: relative;
     isolation: isolate;
     display: flex;
     align-items: flex-end;
     gap: var(--space-3);
-    width: 100%;
+    width: calc(100% + var(--corner-room, 0px));
     min-height: 44px;
     margin: 0 0 var(--space-4);
     padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
