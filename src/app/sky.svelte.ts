@@ -1,4 +1,4 @@
-import type { SkyCounts } from '../globe';
+import type { SkyCounts, SkyShowing } from '../globe';
 import type { SkyPlace } from '../location/location';
 import type { Pass } from '../sky/passes';
 
@@ -17,7 +17,10 @@ export const sky = $state<{
   passes: StationPass[] | null;
   /** The place chooser is open. */
   choosing: boolean;
+  /** What the globe shows: only what's inside the dome until asked for everything, or for what's seen by eye. */
+  showing: SkyShowing;
   show: (place: SkyPlace) => void;
   hide: () => void;
+  setShowing: (showing: SkyShowing) => void;
   watch: (norad: number, start: number) => void;
-}>({ place: null, counts: null, passes: null, choosing: false, show: () => {}, hide: () => {}, watch: () => {} });
+}>({ place: null, counts: null, passes: null, choosing: false, showing: 'dome', show: () => {}, hide: () => {}, setShowing: () => {}, watch: () => {} });

@@ -38,11 +38,27 @@
 {#if sky.place}
   <Sheet label="sky-name" key="sky" onclose={() => sky.hide()}>
     {#snippet header()}
-      <p class="kind">Your sky</p>
+      <div class="top">
+        <p class="kind">Your sky</p>
+        <!-- The globe shows only what's inside the dome until one of these asks for less or more -->
+        <div class="showing" role="group" aria-label="What the globe shows">
+          <button class="chip" type="button" aria-pressed={sky.showing === 'eye'} title="Only what's bright enough to see by eye" onclick={() => sky.setShowing(sky.showing === 'eye' ? 'dome' : 'eye')} onpointerdown={(e) => e.stopPropagation()}>By eye</button>
+          <button class="chip" type="button" aria-pressed={sky.showing === 'all'} title="Every object, not only what's above you" onclick={() => sky.setShowing(sky.showing === 'all' ? 'dome' : 'all')} onpointerdown={(e) => e.stopPropagation()}>Show all</button>
+        </div>
+      </div>
       <h2 id="sky-name">{sky.place!.name}</h2>
       <p class="ids">{placeDetail(sky.place!)}</p>
       <p class="count">
-        {#if sky.counts}
+        {#if sky.counts && sky.showing === 'eye'}
+          {@const { seen, dark } = sky.counts}
+          {#if !dark}
+            The sky here is too light to see any by eye.
+          {:else if seen === 0}
+            None bright enough to see by eye.
+          {:else}
+            <span class="figure lit">{number.format(seen)}</span> bright enough to see by eye.
+          {/if}
+        {:else if sky.counts}
           {@const { above, sunlit } = sky.counts}
           {#if above === 0}
             Nothing shown is above you.
@@ -74,6 +90,7 @@
       <section aria-labelledby="dome-title">
         <h3 id="dome-title">What’s counted</h3>
         <p class="note">Everything at least 10° above your horizon and within 2,000 km of the ground: the dome on the globe, with each object inside it ringed.</p>
+        <p class="note">By eye keeps what you could see without a telescope: in sunlight, against a dark sky, and bright enough to show through city lights (magnitude 4.5, estimated from its size).</p>
         <p class="note">Your location stays on this device.</p>
       </section>
       <div class="actions">
@@ -84,6 +101,34 @@
 {/if}
 
 <style>
+  /* "Your sky" with the two view toggles beside it; on a wide panel they sit clear of the close button */
+  .top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2) var(--space-3);
+    margin-bottom: var(--space-1);
+  }
+
+  .top .kind {
+    margin: 0;
+  }
+
+  .showing {
+    display: flex;
+    gap: var(--space-2);
+  }
+
+  /* On: the amber facet */
+  .showing .chip[aria-pressed='true'] {
+    color: var(--void);
+  }
+
+  .showing .chip[aria-pressed='true']::before {
+    background: linear-gradient(155deg, color-mix(in oklab, var(--glint), white 22%) 0 48%, var(--glint) 48% 100%);
+  }
+
   .count {
     margin: 0 0 var(--space-3);
   }

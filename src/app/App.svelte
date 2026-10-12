@@ -147,8 +147,9 @@
         sky.counts = null;
         sky.passes = null;
         sky.choosing = false;
+        sky.showing = 'dome';
         explore();
-        void app.setSky(place);
+        void app.setSky(place, 'dome');
         void findPasses(place, asked);
       };
       sky.hide = () => {
@@ -159,7 +160,12 @@
         sky.passes = null;
         void app.setSky(null);
       };
-      sky.watch = (norad, start) => void app.watch(norad, start);
+      sky.setShowing = (showing) => {
+        sky.showing = showing;
+        app.setSkyShowing(showing);
+      };
+      // A pass is watched with the station on its own; its toggle brings the rest of the sky back
+      sky.watch = (norad, start) => void app.watch(norad, start).then((found) => found && selection.setSolo(true));
 
       // On a phone the headline steps aside by itself once there's something to look at; any key does it at once,
       // so a keyboard can always reach the timeline
