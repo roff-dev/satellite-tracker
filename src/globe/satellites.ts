@@ -32,6 +32,10 @@ const vertexShader = /* glsl */ `
   uniform float uHidden;
   uniform float uSolo;
   uniform int uKinds;
+  // The dome over a chosen place, when one is shown: where it stands and which way is up
+  uniform float uSky;
+  uniform vec3 uObserver;
+  uniform vec3 uUp;
   ${KEY_UNIFORMS_GLSL}
 
   in float aMdot;
@@ -43,6 +47,7 @@ const vertexShader = /* glsl */ `
 
   out vec3 vColour;
   out float vSelected;
+  out float vRing;
 
   ${ORBIT_GLSL}
   ${KEY_GLSL}
@@ -100,6 +105,7 @@ const vertexShader = /* glsl */ `
       // Only the bright and sunlit spill into a halo, in their own colour
       vColour = sunlit * lit * opacity * shown * crest * smoothstep(4.0, 8.0, glint) * step(0.5, member);
       vSelected = 0.0;
+      vRing = 0.0;
     #else
       // In Earth's shadow: the shadow colour when colouring by light, otherwise its own colour, dimmed
       vec3 shade = uColourBy < 0.5 ? uShadow * 0.25 : key * 0.3;
@@ -113,6 +119,9 @@ const vertexShader = /* glsl */ `
         size = max(size, 5.0);
         vColour = max(vColour, sunlit * 0.9);
       }
+      // Inside the dome over the chosen place (at least 10° up, within 2,000 km of the ground): ringed
+      vRing = uSky > 0.5 && vSelected < 0.5 && length(p) <= 1.31392 && dot(normalize(p - uObserver), uUp) >= 0.173648 ? 1.0 : 0.0;
+      if (vRing > 0.5) size = max(size, 7.0);
     #endif
 
     gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
@@ -124,6 +133,8 @@ const vertexShader = /* glsl */ `
 const fragmentShader = /* glsl */ `
   in vec3 vColour;
   in float vSelected;
+  in float vRing;
+  uniform vec3 uGlint;
   // three's output chunks still write gl_FragColor, which GLSL 3 doesn't have
   out highp vec4 fragColour;
   #define gl_FragColor fragColour
@@ -136,9 +147,16 @@ const fragmentShader = /* glsl */ `
     float r = length(gl_PointCoord - 0.5) * 2.0;
     if (r > 1.0) discard;
     float alpha = 1.0 - smoothstep(0.0, 1.0, r);
+    vec3 colour = vColour;
     // Selected: a 7 px core and a thin ring, in a 22 px sprite
     if (vSelected > 0.5) alpha = (1.0 - smoothstep(0.26, 0.34, r)) + smoothstep(0.7, 0.76, r) * (1.0 - smoothstep(0.82, 0.88, r));
-    gl_FragColor = vec4(vColour, alpha);
+    // Over the chosen place: the point inside a thin amber ring
+    else if (vRing > 0.5) {
+      float ring = smoothstep(0.66, 0.72, r) * (1.0 - smoothstep(0.84, 0.9, r));
+      alpha = max(1.0 - smoothstep(0.0, 0.45, r), ring);
+      colour = mix(vColour, uGlint * 0.85, ring);
+    }
+    gl_FragColor = vec4(colour, alpha);
     #include <colorspace_fragment>
   }
 `;
@@ -175,6 +193,9 @@ export function createSatellites(reducedMotion: boolean, trailDetail: QualitySet
     uHidden: { value: -1 },
     // 1 while only the selected object is shown
     uSolo: { value: 0 },
+    uSky: { value: 0 },
+    uObserver: { value: new Vector3() },
+    uUp: { value: new Vector3(0, 1, 0) },
     // A group's filter code, or -1 for everything
     uFilter: { value: -1 },
     // Kinds drawn, one bit per kind
@@ -267,6 +288,12 @@ export function createSatellites(reducedMotion: boolean, trailDetail: QualitySet
     /** Draw only the selected object, or everything again. */
     setSolo(on: boolean) {
       uniforms.uSolo.value = on ? 1 : 0;
+    },
+    /** Ring what's inside the dome over a place: where it stands and its up, in scene space; null for no dome. */
+    setSky(observer: Vector3 | null, up?: Vector3) {
+      uniforms.uSky.value = observer ? 1 : 0;
+      if (observer) uniforms.uObserver.value.copy(observer);
+      if (up) uniforms.uUp.value.copy(up);
     },
     /** Dim everything outside a group (its filter code), or -1 for none. */
     setFilter(filter: number) {

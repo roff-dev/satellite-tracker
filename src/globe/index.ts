@@ -8,6 +8,8 @@ import { createFollow } from './follow';
 import { COLOUR_BY, CONSTELLATIONS, GROUPS, HIGHLIGHT_BIT, launchOf, type ColourBy } from '../data/groups';
 import { createGlobe } from './renderer';
 import { createSatellites } from './satellites';
+import { observerAt } from '../sky/observer';
+import type { Dome } from './dome';
 
 export interface CatalogStatus {
   /** Objects received so far. */
@@ -53,6 +55,17 @@ export interface Described {
   now: Whereabouts | null;
 }
 
+export interface SkyCounts {
+  above: number;
+  sunlit: number;
+}
+
+/** How often the count inside the dome is brought up to date (it follows playback). */
+const SKY_MS = 1000;
+/** Close enough for the dome to fill the view while a pass crosses it, as a share of the screen's resting distance. */
+const WATCH_CLOSER = 0.62;
+const NORTH = new Vector3(0, 1, 0);
+
 export interface GlobeHandlers {
   onStatus(status: CatalogStatus): void;
   onSelection(selection: Selection | null): void;
@@ -61,6 +74,8 @@ export interface GlobeHandlers {
   /** The name of the object the camera is riding with, or null. */
   onFollow(name: string | null): void;
   onHover(hover: Hover | null): void;
+  /** Inside the dome over the chosen place: how many objects, and how many in sunlight; null with no place shown. */
+  onSky(counts: SkyCounts | null): void;
 }
 
 /** Where a shared link starts: an object to select and a moment to show. */
@@ -76,7 +91,7 @@ const DESCRIBE_MS = 250;
 const RETRY_AFTER = [30, 60, 120];
 
 /** The globe with the catalogue on it: everything that needs three.js, loaded as one chunk. */
-export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescribed, onFollow, onHover }: GlobeHandlers, start: StartAt = {}) {
+export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescribed, onFollow, onHover, onSky }: GlobeHandlers, start: StartAt = {}) {
   if (start.time !== undefined) clock.set(start.time);
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const globe = createGlobe(host);
@@ -244,7 +259,48 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
   // Line widths need the canvas size; reading it every frame would force a layout each time
   const sized = new ResizeObserver(([entry]) => track.setResolution(entry!.contentRect.width, entry!.contentRect.height));
   sized.observe(globe.canvas);
-  const stopFrame = globe.onFrame(() => {
+  // The sky over a chosen place: its dome and marker on the turning Earth, the rings, and the count inside
+  let sky: { lat: number; lon: number; place: Vector3; up: Vector3; dome: Dome | null } | null = null;
+  let skyTimer: ReturnType<typeof setInterval> | undefined;
+  let domeModule: Promise<typeof import('./dome')> | null = null;
+  const skyAt = new Vector3();
+  const skyUp = new Vector3();
+  /**
+   * Where the place is in space as last drawn, scene units. A jump in time turns the Earth, and the camera turns with
+   * the ground through it, so a view aimed by the Earth as drawn ends up on the place either side of the jump.
+   */
+  const placeNow = () => (sky ? skyAt.copy(sky.place).applyAxisAngle(NORTH, globe.earthFixed.rotation.y) : null);
+
+  async function setSky(where: { lat: number; lon: number } | null) {
+    clearInterval(skyTimer);
+    if (sky?.dome) {
+      globe.earthFixed.remove(sky.dome.group);
+      sky.dome.dispose();
+    }
+    sky = null;
+    satellites.setSky(null);
+    onSky(null);
+    if (!where) return;
+    // Earth-fixed km to scene units: (x, z, −y)
+    const { position: p, up: u } = observerAt(where.lat, where.lon);
+    const current = (sky = { ...where, place: new Vector3(p[0], p[2], -p[1]).divideScalar(6371), up: new Vector3(u[0], u[2], -u[1]), dome: null as Dome | null });
+    globe.flyTo(placeNow()!);
+    const count = () => void catalog.sky(where.lat, where.lon, clock.time).then((counts) => sky === current && onSky(counts));
+    count();
+    skyTimer = setInterval(count, SKY_MS);
+    domeModule ??= import('./dome');
+    const { createDome } = await domeModule;
+    if (sky !== current) return;
+    current.dome = createDome(current.place, current.up, reducedMotion);
+    globe.earthFixed.add(current.dome.group);
+  }
+
+  const stopFrame = globe.onFrame((seconds) => {
+    if (sky) {
+      skyUp.copy(sky.up).applyAxisAngle(NORTH, globe.earthFixed.rotation.y);
+      satellites.setSky(skyAt.copy(sky.place).applyAxisAngle(NORTH, globe.earthFixed.rotation.y), skyUp);
+      sky.dome?.update(seconds, globe.pixelRatio);
+    }
     catalog.tick(clock.time, clock.speed);
     satellites.update(clock.time, globe.sun, globe.pixelRatio, globe.glowScale, clock.speed, globe.quality.trails);
     follow.update(performance.now(), clock.time);
@@ -291,9 +347,27 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
     isConstellation: (name: string) => CONSTELLATIONS.some(([prefix]) => name.startsWith(prefix)),
     /** Screen space covered by the panel, timeline and top controls, so the globe can sit in what's left. */
     setInsets: globe.setInsets,
+    /** Show the sky over a place (the dome, the marker and the count inside), or none. */
+    setSky,
+    /** The orbits of the space stations, for the pass search. */
+    stationOrbits: (norads: number[]) => catalog.orbits(norads),
+    /**
+     * Watch a pass: the timeline goes to a minute before it and plays at a minute a second, the station is picked
+     * out with its orbit and track, and the view turns to the place, close enough for the dome to fill it.
+     */
+    async watch(norad: number, start: number) {
+      if (!sky) return;
+      clock.set(start - 60_000);
+      clock.setSpeed(60);
+      clock.setPaused(false);
+      const candidate = await catalog.find(norad);
+      if (candidate) select({ candidates: [candidate], index: 0 });
+      globe.flyTo(placeNow()!, globe.restDistance * WATCH_CLOSER);
+    },
     dispose() {
       clearTimeout(retryTimer);
       clearInterval(describeTimer);
+      clearInterval(skyTimer);
       sized.disconnect();
       track.dispose();
       follow.dispose();

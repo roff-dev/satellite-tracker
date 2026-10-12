@@ -3,6 +3,11 @@
   import { catalog } from './catalog.svelte';
   import { selection } from './selection.svelte';
   import ObjectPanel from './components/ObjectPanel.svelte';
+  import SkyPanel from './components/SkyPanel.svelte';
+  import { sky } from './sky.svelte';
+  import { savePlace, type SkyPlace } from '../location/location';
+  import { STATION_NORADS } from '../sky/lines';
+  import { stationPasses } from '../sky/station-passes';
   import HoverLabel from './components/HoverLabel.svelte';
   import FollowBar from './components/FollowBar.svelte';
   import TopBar from './components/TopBar.svelte';
@@ -54,6 +59,9 @@
         },
         onHover(hover) {
           selection.hover = hover;
+        },
+        onSky(counts) {
+          sky.counts = counts;
         },
       }, linkedStart());
       catalog.retry = app.retryNow;
@@ -117,6 +125,42 @@
           if (linkedGroup && GROUPS.some((g) => g.slug === linkedGroup)) view.setGroup(linkedGroup);
         });
       });
+      // My sky: the place is remembered here, the globe draws the dome, and the stations' passes are searched in
+      // their own worker once the catalogue (and so their orbits) is in, again whenever the soonest has been and gone
+      let passTimer: ReturnType<typeof setTimeout> | undefined;
+      // Which showing of a place an answer belongs to (the state holds a proxy, so the place itself can't be compared)
+      let showing = 0;
+      async function findPasses(place: SkyPlace, asked: number) {
+        clearTimeout(passTimer);
+        await loaded;
+        const orbits = await app.stationOrbits(STATION_NORADS);
+        const from = Date.now();
+        const next = await stationPasses({ lat: place.lat, lon: place.lon, from, to: from + 7 * DAY_MS, orbits });
+        if (asked !== showing) return;
+        sky.passes = next;
+        if (next[0]) passTimer = setTimeout(() => asked === showing && void findPasses(place, asked), next[0].pass.end - Date.now() + 5000);
+      }
+      sky.show = (place) => {
+        const asked = ++showing;
+        savePlace(place);
+        sky.place = place;
+        sky.counts = null;
+        sky.passes = null;
+        sky.choosing = false;
+        explore();
+        void app.setSky(place);
+        void findPasses(place, asked);
+      };
+      sky.hide = () => {
+        showing++;
+        clearTimeout(passTimer);
+        sky.place = null;
+        sky.counts = null;
+        sky.passes = null;
+        void app.setSky(null);
+      };
+      sky.watch = (norad, start) => void app.watch(norad, start);
+
       // On a phone the headline steps aside by itself once there's something to look at; any key does it at once,
       // so a keyboard can always reach the timeline
       const timers: ReturnType<typeof setTimeout>[] = [];
@@ -126,6 +170,7 @@
         addEventListener('keydown', explore, { once: true });
       }
       dispose = () => {
+        clearTimeout(passTimer);
         timers.forEach(clearTimeout);
         removeEventListener('keydown', explore);
         stopReady();
@@ -143,7 +188,12 @@
 
 <Timeline />
 
-<ObjectPanel />
+<!-- One panel at a time: an object's details, or else the sky over the chosen place -->
+{#if selection.current && !selection.following}
+  <ObjectPanel />
+{:else if sky.place && !selection.following}
+  <SkyPanel />
+{/if}
 <FollowBar />
 <HoverLabel />
 

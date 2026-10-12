@@ -5,6 +5,7 @@
   import { selection } from '../selection.svelte';
   import Search from './Search.svelte';
   import ViewMenu from './ViewMenu.svelte';
+  import MySky from './MySky.svelte';
   import TypeFilter from './TypeFilter.svelte';
 
   const number = new Intl.NumberFormat('en-GB');
@@ -53,6 +54,7 @@
         </button>
       {/if}
       <Search {compact} />
+      <MySky />
       <ViewMenu />
     </div>
     <!-- An open sheet has the object's details; the group chip and kinds step aside so its path stays in view -->
