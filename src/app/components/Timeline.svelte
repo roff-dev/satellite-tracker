@@ -230,7 +230,7 @@
     <div class="playback" role="group" aria-label="Playback">
       {@render direction(-1)}
       {@render direction(1)}
-      <button class="chip speed" type="button" aria-label="Speed: {SPEED_NAMES[Math.abs(rate)]}. Change speed" onclick={faster}>
+      <button class="chip speed" type="button" aria-label="{Math.abs(rate)}× speed, {SPEED_NAMES[Math.abs(rate)]}. Change speed" onclick={faster}>
         <span class="figure">{Math.abs(rate)}×</span>
       </button>
     </div>
