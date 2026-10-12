@@ -116,7 +116,7 @@
   <!-- Everything else drops away, so this one object can be watched on its own; the label says what a press does -->
   <button class="chip solo" class:on={selection.solo} type="button" aria-label={solo[0]} onclick={() => selection.setSolo(!selection.solo)}>
     {#if short}
-      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M2 12 8 6.5h8l6 5.5-6 5.5H8z" fill="none" stroke="currentColor" stroke-width="1.6" /><path d="M12 9l3 3-3 3-3-3z" fill="currentColor" /></svg>
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M2 12 8 6.5h8l6 5.5-6 5.5H8zm2.4 0 4.2 3.9h6.8l4.2-3.9-4.2-3.9H8.6z" fill="currentColor" fill-rule="evenodd" /><path d="M12 9l3 3-3 3-3-3z" fill="currentColor" /></svg>
     {/if}
     {short ? solo[2] : solo[1]}
   </button>
