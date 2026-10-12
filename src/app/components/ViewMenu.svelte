@@ -158,6 +158,13 @@
     outline: none;
   }
 
+  /* Upright phones: margin to margin, lined up with the row of kind tags it opens over */
+  @media (max-width: 699px) {
+    .panel {
+      width: calc(100vw - 2 * var(--gutter));
+    }
+  }
+
   section {
     padding: var(--space-3) 0;
   }
