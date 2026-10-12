@@ -41,7 +41,7 @@ function load(key: string) {
       .then((response) => (response.ok ? response.text() : ''))
       .then((text) =>
         text
-          .split('\n')
+          .split(/\r?\n/)
           .filter(Boolean)
           .map((line) => {
             const [name = '', region = '', country = '', lat = '0', lon = '0', population = '0', timeZone = ''] = line.split('\t');
