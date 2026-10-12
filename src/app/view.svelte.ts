@@ -21,6 +21,10 @@ export const view = $state<{
   topInset: number;
   /** On upright phones, the room the station row takes above the timeline, CSS px; 0 elsewhere. */
   stationsHeight: number;
+  /** The View options menu is open. */
+  menuOpen: boolean;
+  /** Search results are showing under the field. */
+  resultsOpen: boolean;
   /** The headline steps aside and the globe takes the middle, as it does the moment you touch anything. */
   explore: () => void;
   setGroup: (slug: string | null) => void;
@@ -42,6 +46,8 @@ export const view = $state<{
   timelineHeight: 0,
   topInset: 0,
   stationsHeight: 0,
+  menuOpen: false,
+  resultsOpen: false,
   explore: () => document.documentElement.classList.add('exploring'),
   setGroup: () => {},
   setColourBy: () => {},

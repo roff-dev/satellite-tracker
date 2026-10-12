@@ -3,6 +3,7 @@
   import { view } from '../view.svelte';
   import { loadNames, names } from '../names.svelte';
   import type { SearchResult } from '../../data/protocol';
+  import Scrollbar from './Scrollbar.svelte';
 
   let { compact = false }: { compact?: boolean } = $props();
 
@@ -16,6 +17,12 @@
   let open = $state(false);
   let expanded = $state(false);
   let input = $state<HTMLInputElement>();
+  let list = $state<HTMLElement>();
+
+  $effect(() => {
+    view.resultsOpen = open && searched;
+    return () => (view.resultsOpen = false);
+  });
 
   // Each keystroke waits briefly, and only the latest search is shown
   let latest = 0;
@@ -124,7 +131,7 @@
       {/if}
     </div>
     {#if open && searched}
-      <ul id="search-results" role="listbox" aria-label="Search results">
+      <ul bind:this={list} id="search-results" role="listbox" aria-label="Search results">
         {#each results as result, i (result.slot)}
           <li id="result-{i}" role="option" aria-selected={i === active} class:active={i === active}>
             <button type="button" tabindex="-1" onmousedown={(e) => e.preventDefault()} onclick={() => choose(result)} onmouseenter={() => (active = i)}>
@@ -136,6 +143,7 @@
           <li class="empty" role="option" aria-selected="false" aria-disabled="true">Nothing in orbit by that name. Try its catalogue number, like 25544 for the ISS.</li>
         {/each}
       </ul>
+      {#if !compact}<Scrollbar target={list} offset={-8} top={8} />{/if}
     {/if}
   {/if}
 </div>
@@ -253,10 +261,17 @@
     clip-path: var(--facet-cut);
   }
 
-  /* Wide screens: results open as wide as the menus beside the field, lined up with them */
+  /* Wide screens: results open as wide as the menus beside the field, lined up with them, with room on the right for
+     the faceted scrollbar in place of the browser's */
   .search:not(.compact) ul {
     right: auto;
     width: 22rem;
+    padding-right: var(--space-4);
+    scrollbar-width: none;
+  }
+
+  .search:not(.compact) ul::-webkit-scrollbar {
+    display: none;
   }
 
   li button {

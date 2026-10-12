@@ -7,7 +7,9 @@
   import { onMount, type Snippet } from 'svelte';
   import { Spring } from 'svelte/motion';
   import { selection } from '../selection.svelte';
+  import { sky } from '../sky.svelte';
   import { view } from '../view.svelte';
+  import Scrollbar from './Scrollbar.svelte';
 
   let {
     label,
@@ -109,6 +111,9 @@
     if (sheet) selection.insets = { right: 0, bottom: heights.peek };
     else if (panel) selection.insets = { right: innerWidth - panel.getBoundingClientRect().left, bottom: 0 };
   });
+
+  // A menu or list from the top bar drops over the same corner: the panel steps aside until it's closed
+  const aside = $derived(!sheet && (view.menuOpen || view.resultsOpen || sky.choosing));
 
   // The heading keeps clear of whatever the corner holds, and a sheet's header is at least as tall as it
   let cornerWidth = $state(0);
@@ -222,7 +227,7 @@
   });
 </script>
 
-<aside bind:this={panel} class="panel" class:sheet style:height={sheet ? `${height.current}px` : undefined} aria-labelledby={label}>
+<aside bind:this={panel} class="panel" class:sheet class:aside style:height={sheet ? `${height.current}px` : undefined} aria-labelledby={label}>
   <header
     style:--corner-room={cornerWidth ? `${cornerWidth + 8}px` : undefined}
     style:min-height={sheet && cornerHeight ? `calc(var(--space-3) + ${cornerHeight + 8}px)` : undefined}
@@ -250,6 +255,8 @@
   <div class="body" bind:this={list}>
     {@render body()}
   </div>
+  <!-- Wide panels draw their own scrollbar in the margin beside the list -->
+  {#if !sheet}<Scrollbar target={list} />{/if}
   {@render children?.()}
   <!-- How much of the screen's foot the home indicator takes, so the lowest sheet clears it -->
   <span class="safe-probe" bind:clientHeight={safeBottom} aria-hidden="true"></span>
@@ -278,6 +285,29 @@
     from {
       opacity: 0;
       transform: translateX(12px);
+    }
+  }
+
+  /* Stepping aside goes the way it came in, and coming back is its arrival again; the globe stays where it is */
+  .panel:not(.sheet) {
+    transition:
+      opacity 0.28s cubic-bezier(0.2, 0.7, 0.2, 1),
+      translate 0.28s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+
+  .panel.aside {
+    visibility: hidden;
+    opacity: 0;
+    translate: 12px 0;
+    transition:
+      opacity 0.16s ease-in,
+      translate 0.16s ease-in,
+      visibility 0s 0.16s;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .panel.aside {
+      translate: none;
     }
   }
 
@@ -318,6 +348,14 @@
     padding: 0 var(--space-1) calc(var(--space-6) + env(safe-area-inset-bottom));
     overflow: hidden auto;
     overscroll-behavior: contain;
+  }
+
+  .panel:not(.sheet) .body {
+    scrollbar-width: none;
+  }
+
+  .panel:not(.sheet) .body::-webkit-scrollbar {
+    display: none;
   }
 
   /* A phone on its side: the header alone can be taller than the room above the timeline, so the whole panel scrolls */

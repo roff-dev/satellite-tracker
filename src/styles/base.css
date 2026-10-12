@@ -9,6 +9,8 @@ html {
   text-size-adjust: 100%;
   /* No double-tap zoom (a quick second tap on the globe shouldn't zoom the page); pinch zoom still works */
   touch-action: manipulation;
+  /* Any browser scrollbar left showing takes the site's colours (the main lists draw their own) */
+  scrollbar-color: var(--muted) transparent;
 }
 
 body {

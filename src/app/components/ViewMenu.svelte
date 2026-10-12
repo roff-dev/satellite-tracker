@@ -43,11 +43,18 @@
     if (refocus) button?.focus();
   }
 
+  // On the button as well as the menu, since a click leaves focus on the button: Escape closes the menu, rather
+  // than reaching the globe and closing the details behind it
   function onKey(event: KeyboardEvent) {
-    if (event.key !== 'Escape') return;
+    if (event.key !== 'Escape' || !open) return;
     event.stopPropagation();
     close();
   }
+
+  $effect(() => {
+    view.menuOpen = open;
+    return () => (view.menuOpen = false);
+  });
 
   // A click anywhere outside closes it
   $effect(() => {
@@ -71,6 +78,7 @@
     aria-expanded={open}
     aria-controls="view-panel"
     disabled={!view.ready}
+    onkeydown={onKey}
     onclick={() => {
       open = !open;
       // Reaching for the controls counts as exploring: the headline steps aside
