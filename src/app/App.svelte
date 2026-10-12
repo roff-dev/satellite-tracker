@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { catalog } from './catalog.svelte';
   import { selection } from './selection.svelte';
   import ObjectPanel from './components/ObjectPanel.svelte';
@@ -11,6 +11,7 @@
   import HoverLabel from './components/HoverLabel.svelte';
   import FollowBar from './components/FollowBar.svelte';
   import TopBar from './components/TopBar.svelte';
+  import Stations from './components/Stations.svelte';
   import Timeline from './components/Timeline.svelte';
   import { clock, EXTENDED_DAYS, STANDARD_DAYS } from '../time/clock';
   import { PHONE, view } from './view.svelte';
@@ -38,6 +39,8 @@
 
   let host: HTMLDivElement;
   let visible = $state(false);
+  /** A station picked to ride with, until its position is known; its panel waits rather than flashing up. */
+  let boarding = $state<number | null>(null);
 
   onMount(() => {
     let dispose = () => {};
@@ -83,6 +86,23 @@
         app.selectFound(candidate);
         explore();
       };
+      view.showStation = async (norad, follow) => {
+        const found = (await app.search(String(norad))).find((result) => result.norad === norad);
+        if (!found) return;
+        boarding = follow ? norad : null;
+        view.selectFound(found);
+      };
+      // Riding along starts with the station's first answer from the worker, as the panel's Follow waits for it
+      const stopBoarding = $effect.root(() => {
+        $effect(() => {
+          const described = selection.described;
+          untrack(() => {
+            if (boarding === null || !described) return;
+            if (described.details.norad === boarding && described.now) app.follow();
+            boarding = null;
+          });
+        });
+      });
       view.isConstellation = app.isConstellation;
       view.setColourBy = (mode) => {
         view.colourBy = mode;
@@ -109,7 +129,7 @@
       };
       // Created after the async import, so it needs its own root, cleaned up with the globe
       const stopInsets = $effect.root(() => {
-        $effect(() => app.setInsets(selection.insets.right, selection.insets.bottom + view.timelineHeight, view.topInset));
+        $effect(() => app.setInsets(selection.insets.right, selection.insets.bottom + view.timelineHeight + view.stationsHeight, view.topInset));
       });
       app.globe.onInteract(explore);
       void app.globe.ready.then(() => (visible = true));
@@ -181,6 +201,7 @@
         removeEventListener('keydown', explore);
         stopReady();
         stopInsets();
+        stopBoarding();
         app.dispose();
       };
     });
@@ -190,13 +211,14 @@
 
 <!-- Search and view come first in the tab order, then the globe -->
 <TopBar />
+<Stations />
 <div class="globe" class:visible bind:this={host}></div>
 
 <Timeline />
 
 <!-- One panel at a time: an object's details, or else the sky over the chosen place -->
 {#if selection.current && !selection.following}
-  <ObjectPanel />
+  {#if boarding === null}<ObjectPanel />{/if}
 {:else if sky.place && !selection.following}
   <SkyPanel />
 {/if}

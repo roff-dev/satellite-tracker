@@ -19,6 +19,8 @@ export const view = $state<{
   timelineHeight: number;
   /** On phones, how far down the controls along the top reach, CSS px; 0 elsewhere. */
   topInset: number;
+  /** On upright phones, the room the station row takes above the timeline, CSS px; 0 elsewhere. */
+  stationsHeight: number;
   /** The headline steps aside and the globe takes the middle, as it does the moment you touch anything. */
   explore: () => void;
   setGroup: (slug: string | null) => void;
@@ -26,6 +28,8 @@ export const view = $state<{
   setKinds: (mask: number) => void;
   search: (query: string) => Promise<SearchResult[]>;
   selectFound: (candidate: Candidate) => void;
+  /** Select a station by its catalogue number, and ride along with it once its position is known. */
+  showStation: (norad: number, follow: boolean) => void;
   showLaunch: (on: boolean, cospar?: string) => void;
   isConstellation: (name: string) => boolean;
 }>({
@@ -37,12 +41,14 @@ export const view = $state<{
   launchCount: null,
   timelineHeight: 0,
   topInset: 0,
+  stationsHeight: 0,
   explore: () => document.documentElement.classList.add('exploring'),
   setGroup: () => {},
   setColourBy: () => {},
   setKinds: () => {},
   search: async () => [],
   selectFound: () => {},
+  showStation: () => {},
   showLaunch: () => {},
   isConstellation: () => false,
 });
