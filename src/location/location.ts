@@ -57,6 +57,15 @@ export function savePlace(place: SkyPlace) {
   }
 }
 
+/** Forgets the place, so My sky asks again next time. */
+export function forgetPlace() {
+  try {
+    localStorage.removeItem(KEY);
+  } catch {
+    // Storage turned off: nothing was kept
+  }
+}
+
 export type LocateFailure = 'denied' | 'unavailable';
 
 /** Asks the device where it is. Only ever called from a tap, and the answer never leaves the browser. */

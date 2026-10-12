@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { sky, type StationPass } from '../sky.svelte';
   import { NEITHER, passLine } from '../../sky/lines';
-  import { placeDetail } from '../../location/location';
+  import { forgetPlace, placeDetail } from '../../location/location';
   import Sheet from './Sheet.svelte';
 
   const number = new Intl.NumberFormat('en-GB');
@@ -95,6 +95,7 @@
       </section>
       <div class="actions">
         <button class="chip" type="button" onclick={() => (sky.choosing = true)}>Change place</button>
+        <button class="chip" type="button" onclick={() => (forgetPlace(), sky.hide())}>Forget this place</button>
       </div>
     {/snippet}
   </Sheet>
