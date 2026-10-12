@@ -45,7 +45,7 @@
 </script>
 
 {#if !selection.following}
-  <div class="top-bar" bind:this={bar}>
+  <section class="top-bar" bind:this={bar} aria-label="Search and view">
     <div class="row">
       {#if group && !compact}
         <button class="chip filter" type="button" onclick={() => view.setGroup(null)} aria-label="Show everything again ({group.label} picked out)">
@@ -65,7 +65,7 @@
       </button>
     {/if}
     <TypeFilter />
-  </div>
+  </section>
 {/if}
 
 <style>
