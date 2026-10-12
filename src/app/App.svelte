@@ -37,7 +37,7 @@
     };
   }
 
-  let host: HTMLDivElement;
+  let host: HTMLElement;
   let visible = $state(false);
   /** A station picked to ride with, until its position is known; its panel waits rather than flashing up. */
   let boarding = $state<number | null>(null);
@@ -212,7 +212,7 @@
 <!-- Search and view come first in the tab order, then the globe -->
 <TopBar />
 <Stations />
-<div class="globe" class:visible bind:this={host}></div>
+<main class="globe" class:visible bind:this={host} aria-label="Satellite globe"></main>
 
 <Timeline />
 
