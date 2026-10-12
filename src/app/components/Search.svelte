@@ -133,11 +133,22 @@
     {#if open && searched}
       <ul bind:this={list} id="search-results" role="listbox" aria-label="Search results">
         {#each results as result, i (result.slot)}
-          <li id="result-{i}" role="option" aria-selected={i === active} class:active={i === active}>
-            <button type="button" tabindex="-1" onmousedown={(e) => e.preventDefault()} onclick={() => choose(result)} onmouseenter={() => (active = i)}>
-              <span class="name">{result.match ?? result.name}</span>
-              <span class="meta">{result.match ? `Docked with ${result.name}` : describe(result)}</span>
-            </button>
+          <!-- The row is the option itself; keys reach it through the field (arrows and Enter, by aria-activedescendant),
+               and pressing it never takes focus from the field -->
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <li
+            id="result-{i}"
+            class="result"
+            role="option"
+            tabindex="-1"
+            aria-selected={i === active}
+            class:active={i === active}
+            onmousedown={(e) => e.preventDefault()}
+            onclick={() => choose(result)}
+            onmouseenter={() => (active = i)}
+          >
+            <span class="name">{result.match ?? result.name}</span>
+            <span class="meta">{result.match ? `Docked with ${result.name}` : describe(result)}</span>
           </li>
         {:else}
           <li class="empty" role="option" aria-selected="false" aria-disabled="true">Nothing in orbit by that name. Try its catalogue number, like 25544 for the ISS.</li>
@@ -274,22 +285,17 @@
     display: none;
   }
 
-  li button {
+  .result {
     display: grid;
-    width: 100%;
     gap: 2px;
     min-height: 44px;
     padding: var(--space-2) var(--space-3);
-    border: 0;
-    background: none;
     color: var(--ink);
-    text-align: left;
-    font: inherit;
     cursor: pointer;
     clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
   }
 
-  li.active button {
+  .result.active {
     background: var(--raise);
   }
 
