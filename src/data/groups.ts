@@ -13,10 +13,16 @@ export const FILTER = {
   none: -1,
   /** Launched in the 30 days before the moment shown. */
   recent: 100,
-  /** Estimated magnitude 4.5 or brighter. */
+  /** Estimated brighter than magnitude 4.5: glint above BRIGHTEST_GLINT. */
   brightest: 101,
   debris: 102,
 } as const;
+
+/**
+ * Glint 4 is magnitude 4.495, the line the glow starts at. Not 4.5 itself: that's the size-class guess every LARGE
+ * object without a measured RCS gets, and there are about 15,000 of them, mostly Starlink.
+ */
+export const BRIGHTEST_GLINT = 4;
 
 /** Bit for "the launch group being highlighted": objects from the same launch as the selected one. */
 export const HIGHLIGHT_BIT = 23;

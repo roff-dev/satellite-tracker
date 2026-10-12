@@ -31,7 +31,7 @@ import {
   type SearchResult,
   type Whereabouts,
 } from '../data/protocol';
-import { CONSTELLATIONS, FILTER, GEO_BIT, HIGHLIGHT_BIT, LISTED, STATION_BIT, launchOf } from '../data/groups';
+import { BRIGHTEST_GLINT, CONSTELLATIONS, FILTER, GEO_BIT, HIGHLIGHT_BIT, LISTED, STATION_BIT, launchOf } from '../data/groups';
 import { createSearch } from '../data/search';
 import { orbitNumbers } from '../orbit/describe';
 import { STATION, VISUAL, findNearby } from '../data/pick';
@@ -658,7 +658,7 @@ function searchFor(id: number, query: string) {
 function isMember(slot: number, filter: number, day: number) {
   const o = slot * STRIDE;
   if (filter === FILTER.recent) return day - master[o + LAUNCH_DAY]! <= 30 && master[o + LAUNCH_DAY]! <= day;
-  if (filter === FILTER.brightest) return master[o + GLINT]! >= 10 ** 0.6;
+  if (filter === FILTER.brightest) return master[o + GLINT]! > BRIGHTEST_GLINT;
   if (filter === FILTER.debris) return master[o + KIND]! >= Kind.Rocket;
   return (master[o + GROUPS]! & (1 << filter)) !== 0;
 }

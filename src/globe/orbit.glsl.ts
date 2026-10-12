@@ -82,7 +82,7 @@ export const KEY_GLSL = /* glsl */ `
   bool member(int kind, float glint, float launchDay, float groups) {
     if (uFilter < 0.0) return true;
     if (uFilter > 101.5) return kind >= 2;
-    if (uFilter > 100.5) return glint >= 3.98;
+    if (uFilter > 100.5) return glint > 4.0;
     if (uFilter > 99.5) return uDay - launchDay <= 30.0;
     return ((int(groups + 0.5) >> int(uFilter + 0.5)) & 1) == 1;
   }
