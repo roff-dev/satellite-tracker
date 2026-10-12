@@ -27,7 +27,7 @@ import {
   type PickedMessage,
   type ProgressMessage,
   type SkyCountMessage,
-  type SkyView,
+  type Findable,
   type SearchResult,
   type Whereabouts,
 } from '../data/protocol';
@@ -404,13 +404,14 @@ async function loadCatalogue() {
 }
 
 function pick({ id, ...request }: PickRequest) {
-  // Over a chosen place showing only its own sky, a tap finds only what's drawn there
-  const view = skyView;
-  let accept: ((slot: number, position: Float64Array) => boolean) | undefined;
-  if (view && view.mode >= 2) {
-    const frame = skyFrame(view.lat, view.lon, request.time);
-    accept = (slot, position) => slot === view.keep || seenFrom(frame, slot, position) >= view.mode - 1;
-  }
+  // A tap finds only what's drawn: the group picked out, and over a chosen place only what its sky shows
+  const { filter, sky, keep } = findable;
+  const frame = sky && sky.mode >= 2 ? skyFrame(sky.lat, sky.lon, request.time) : null;
+  const day = request.time / DAY_MS;
+  const accept =
+    filter < 0 && !frame
+      ? undefined
+      : (slot: number, position: Float64Array) => slot === keep || ((filter < 0 || isMember(slot, filter, day)) && (!frame || seenFrom(frame, slot, position) >= sky!.mode - 1));
   const message: PickedMessage = { type: 'picked', id, candidates: findNearby(master, objects, anchorTime, request, 8, shownKinds, accept) };
   scope.postMessage(message);
 }
@@ -507,8 +508,8 @@ function describe({ id, slot, time, paths }: DescribeRequest) {
 const teme = new Float64Array(3);
 const fixed = new Float64Array(3);
 
-/** What taps may find over a chosen place; null finds everything. */
-let skyView: SkyView | null = null;
+/** What taps may find, as drawn. */
+let findable: Findable = { filter: -1, sky: null, keep: -1 };
 
 /** A place's sky at a moment: where it stands, the Earth's turn, the Sun's direction (TEME and Earth-fixed). */
 interface SkyFrame {
@@ -677,8 +678,8 @@ scope.onmessage = (event: MessageEvent<CatalogRequest>) => {
     shownKinds = request.mask;
     return;
   }
-  if (request.type === 'skyView') {
-    skyView = request.view;
+  if (request.type === 'findable') {
+    findable = request.view;
     return;
   }
   if (request.type === 'pick') return pick(request);

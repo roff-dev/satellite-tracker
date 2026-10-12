@@ -78,14 +78,12 @@ export const KEY_GLSL = /* glsl */ `
     return base;
   }
 
-  /** 1 for members of the group picked out (or when none is), 0.08 for everything else, so the rest stays as context. */
-  float membership(int kind, float glint, float launchDay, float groups) {
-    if (uFilter < 0.0) return 1.0;
-    bool inside;
-    if (uFilter > 101.5) inside = kind >= 2;
-    else if (uFilter > 100.5) inside = glint >= 3.98;
-    else if (uFilter > 99.5) inside = uDay - launchDay <= 30.0;
-    else inside = ((int(groups + 0.5) >> int(uFilter + 0.5)) & 1) == 1;
-    return inside ? 1.0 : 0.08;
+  /** In the group picked out, or anything when none is; the rest isn't drawn, so a small group can be found. */
+  bool member(int kind, float glint, float launchDay, float groups) {
+    if (uFilter < 0.0) return true;
+    if (uFilter > 101.5) return kind >= 2;
+    if (uFilter > 100.5) return glint >= 3.98;
+    if (uFilter > 99.5) return uDay - launchDay <= 30.0;
+    return ((int(groups + 0.5) >> int(uFilter + 0.5)) & 1) == 1;
   }
 `;

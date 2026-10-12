@@ -20,8 +20,8 @@ export type CatalogRequest =
   | { type: 'kinds'; mask: number }
   /** How many shown objects are inside the dome over a place at a moment (ms), how many are sunlit and how many can be seen by eye. */
   | { type: 'sky'; id: number; lat: number; lon: number; time: number }
-  /** What the sky over a place lets taps find, or null for everything. */
-  | { type: 'skyView'; view: SkyView | null }
+  /** What taps can find: only what's drawn. */
+  | { type: 'findable'; view: Findable }
   /** The orbits of a few objects by catalogue number, for the pass search in its own worker. */
   | { type: 'orbits'; id: number; norads: number[] }
   | PickRequest
@@ -113,14 +113,13 @@ export interface CountedMessage {
   count: number;
 }
 
-/**
- * The sky over a place, as taps should see it: mode 2 finds only what's inside its dome, 3 only what can be seen there
- * by eye (1 and 0 find everything). The selected object can always be found.
- */
-export interface SkyView {
-  lat: number;
-  lon: number;
-  mode: number;
+/** What taps can find, matching what's drawn. */
+export interface Findable {
+  /** The group picked out (a filter code), or −1 for everything. */
+  filter: number;
+  /** The sky over a place: mode 2 finds only what's inside its dome, 3 only what can be seen there by eye; null for none. */
+  sky: { lat: number; lon: number; mode: number } | null;
+  /** The selected object, which is drawn and can be found whatever the rest say. */
   keep: number;
 }
 

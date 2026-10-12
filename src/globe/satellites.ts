@@ -31,6 +31,8 @@ const vertexShader = /* glsl */ `
   uniform float uHovered;
   uniform float uHidden;
   uniform float uSolo;
+  // While a small group is picked out, each member is ringed at this size (px), so a handful can be found; 0 for none
+  uniform float uMark;
   uniform int uKinds;
   ${KEY_UNIFORMS_GLSL}
 
@@ -78,9 +80,9 @@ const vertexShader = /* glsl */ `
       hide();
       return;
     }
-    // Over a chosen place, only what its sky shows, if that's all that's asked for
+    // Over a chosen place, only what its sky shows, if that's all that's asked for; with a group picked out, only it
     float sky = seen(p, lit, glint);
-    if (sky < uSky - 1.0 && float(gl_VertexID) != uSelected) {
+    if ((sky < uSky - 1.0 || !member(kind, glint, aX.w, aGroups)) && float(gl_VertexID) != uSelected) {
       hide();
       return;
     }
@@ -90,10 +92,9 @@ const vertexShader = /* glsl */ `
     if (abs(uDay - aEpoch) > 7.0) opacity *= 0.5;
 
     vec3 key = keyColour(kind, a, e);
-    float member = membership(kind, glint, aX.w, aGroups);
 
-    // Glint runs 0.35 to 8. On screen it saturates at 3, compressed so the brightest stay amber rather than
-    // clipping to white; the range above 3 only picks out the truly bright objects that glow
+    // Glint is light relative to magnitude 6. On screen it saturates at 3, compressed so the brightest stay amber
+    // rather than clipping to white; the range above 3 only picks out the truly bright objects that glow
     float strength = mix(0.35, 1.1, smoothstep(0.35, 3.0, glint));
     vec3 sunlit = key * strength * (0.3 + 0.7 * phase);
     size *= mix(1.0, 0.85 + 0.15 * clamp(glint, 0.35, 3.0), lit);
@@ -106,13 +107,13 @@ const vertexShader = /* glsl */ `
 
     #ifdef GLOW
       // Only the bright and sunlit spill into a halo, in their own colour
-      vColour = sunlit * lit * opacity * shown * crest * smoothstep(4.0, 8.0, glint) * step(0.5, member);
+      vColour = sunlit * lit * opacity * shown * crest * smoothstep(4.0, 8.0, glint);
       vSelected = 0.0;
       vRing = 0.0;
     #else
       // In Earth's shadow: the shadow colour when colouring by light, otherwise its own colour, dimmed
       vec3 shade = uColourBy < 0.5 ? uShadow * 0.25 : key * 0.3;
-      vColour = mix(shade, sunlit, lit) * opacity * shown * crest * member;
+      vColour = mix(shade, sunlit, lit) * opacity * shown * crest;
       // The selected object is drawn larger, in the selection colour, with a ring around it
       vSelected = float(gl_VertexID) == uSelected ? 1.0 : 0.0;
       if (vSelected > 0.5) {
@@ -122,9 +123,10 @@ const vertexShader = /* glsl */ `
         size = max(size, 5.0);
         vColour = max(vColour, sunlit * 0.9);
       }
-      // Inside the dome over the chosen place (at least 10° up, within 2,000 km of the ground): ringed
-      vRing = sky > 0.5 && vSelected < 0.5 ? 1.0 : 0.0;
-      if (vRing > 0.5) size = max(size, 7.0);
+      // Inside the dome over the chosen place (at least 10° up, within 2,000 km of the ground), or one of a small group
+      // picked out: ringed
+      vRing = (sky > 0.5 || uMark > 0.5) && vSelected < 0.5 ? 1.0 : 0.0;
+      if (vRing > 0.5) size = max(size, uMark > 0.5 ? uMark : 7.0);
     #endif
 
     gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
@@ -196,6 +198,7 @@ export function createSatellites(reducedMotion: boolean, trailDetail: QualitySet
     uHidden: { value: -1 },
     // 1 while only the selected object is shown
     uSolo: { value: 0 },
+    uMark: { value: 0 },
     uSky: { value: 0 },
     uObserver: { value: new Vector3() },
     uUp: { value: new Vector3(0, 1, 0) },
@@ -292,6 +295,10 @@ export function createSatellites(reducedMotion: boolean, trailDetail: QualitySet
     setSolo(on: boolean) {
       uniforms.uSolo.value = on ? 1 : 0;
     },
+    /** Ring every object drawn at this size (px), for a group small enough that its members would otherwise be hard to find; 0 for none. */
+    setMarked(size: number) {
+      uniforms.uMark.value = size;
+    },
     /**
      * The sky over a place: where it stands and its up, in scene space, and what to draw (1 everything, with what's
      * inside the dome ringed; 2 only what's inside; 3 only what can be seen there by eye); null for no place.
@@ -301,7 +308,7 @@ export function createSatellites(reducedMotion: boolean, trailDetail: QualitySet
       if (observer) uniforms.uObserver.value.copy(observer);
       if (up) uniforms.uUp.value.copy(up);
     },
-    /** Dim everything outside a group (its filter code), or -1 for none. */
+    /** Draw only a group (its filter code), or -1 for everything. */
     setFilter(filter: number) {
       uniforms.uFilter.value = filter;
     },

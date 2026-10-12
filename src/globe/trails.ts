@@ -45,12 +45,13 @@ const vertexShader = /* glsl */ `
 
   void main() {
     int kind = int(aX.y + 0.5);
-    bool hidden = aOrbit.x <= 0.0 || uDay < aX.w || ((uKinds >> kind) & 1) == 0 || (uSolo > 0.5 && float(gl_InstanceID) != uSelected);
+    bool kept = float(gl_InstanceID) == uSelected;
+    bool hidden = aOrbit.x <= 0.0 || uDay < aX.w || ((uKinds >> kind) & 1) == 0 || (uSolo > 0.5 && !kept) || (!member(kind, aX.z, aX.w, aGroups) && !kept);
     #ifdef PAYLOADS_ONLY
       hidden = hidden || kind >= 2;
     #endif
     // Over a chosen place, judged where the object is now, so a tail is kept or dropped whole
-    if (!hidden && uSky > 1.5 && float(gl_InstanceID) != uSelected) {
+    if (!hidden && uSky > 1.5 && !kept) {
       vec3 now = toScene(orbitPosition(aOrbit, aMdot, aP, aQ, aX.x, uDt));
       hidden = seen(now, inSunlight(now, uSun), aX.z) < uSky - 1.0;
     }
@@ -70,7 +71,7 @@ const vertexShader = /* glsl */ `
     vec3 shade = uColourBy < 0.5 ? uShadow * 0.25 : key * 0.3;
     // Brightest at the object, fading to nothing at the end of the tail; faint, since thousands overlap
     float fade = 1.0 - k / (SAMPLES - 1.0);
-    vColour = mix(shade, key, lit) * 0.35 * fade * fade * uTrail * membership(kind, aX.z, aX.w, aGroups) * (kind == 1 ? 0.6 : 1.0);
+    vColour = mix(shade, key, lit) * 0.35 * fade * fade * uTrail * (kind == 1 ? 0.6 : 1.0);
 
     gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
     #include <logdepthbuf_vertex>

@@ -68,6 +68,11 @@ export interface SkyCounts {
 export type SkyShowing = 'all' | 'dome' | 'eye';
 const SKY_MODES: Record<SkyShowing, number> = { all: 1, dome: 2, eye: 3 };
 
+/**
+ * How big a ring each member of a group picked out gets, so a handful can be found on the globe: larger the fewer
+ * there are, and none past a few hundred, where the group's own shape shows.
+ */
+const ringFor = (count: number) => (count === 0 || count > 500 ? 0 : count <= 100 ? 13 : 9);
 /** How often the count inside the dome is brought up to date (it follows playback). */
 const SKY_MS = 1000;
 /** Close enough for the dome to fill the view while a pass crosses it, as a share of the screen's resting distance. */
@@ -157,14 +162,19 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
     restDistance: () => globe.restDistance,
   });
 
-  // A launch group shown for the selected constellation satellite, and the group filter in force
+  // A launch group shown for the selected constellation satellite, and the group filter in force with its size
   let launch: string | null = null;
   let filter = -1;
+  let filterCount = 0;
   async function showLaunch(on: boolean, cospar = '') {
-    launch = on ? launchOf(cospar) : null;
+    const shown = (launch = on ? launchOf(cospar) : null);
     if (!launch) track.setTrain(null);
     satellites.setFilter(launch ? HIGHLIGHT_BIT : filter);
-    return catalog.highlight(launch);
+    satellites.setMarked(launch || filter < 0 ? 0 : ringFor(filterCount));
+    showFindable();
+    const count = await catalog.highlight(launch);
+    if (launch && launch === shown) satellites.setMarked(ringFor(count));
+    return count;
   }
 
   function startFollowing() {
@@ -222,7 +232,7 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
     if (launch && previous !== now) void showLaunch(false);
     selection = next;
     satellites.setSelected(selectedSlot());
-    showSkyView();
+    showFindable();
     clearInterval(describeTimer);
     traced = null;
     track.clear();
@@ -272,9 +282,9 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
   let sky: { lat: number; lon: number; place: Vector3; up: Vector3; dome: Dome | null } | null = null;
   let skyMode = SKY_MODES.dome;
   let skyTimer: ReturnType<typeof setInterval> | undefined;
-  /** Taps find what the sky shows, and always the selected object, which is drawn wherever it is. */
-  function showSkyView() {
-    catalog.setSkyView(sky ? { lat: sky.lat, lon: sky.lon, mode: skyMode, keep: selectedSlot() } : null);
+  /** Taps find only what's drawn: the group or launch picked out, what the sky shows, and always the selected object. */
+  function showFindable() {
+    catalog.setFindable({ filter: launch ? HIGHLIGHT_BIT : filter, sky: sky ? { lat: sky.lat, lon: sky.lon, mode: skyMode } : null, keep: selectedSlot() });
   }
   let domeModule: Promise<typeof import('./dome')> | null = null;
   const skyAt = new Vector3();
@@ -295,12 +305,12 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
     sky = null;
     satellites.setSky(null);
     onSky(null);
-    showSkyView();
+    showFindable();
     if (!where) return;
     // Earth-fixed km to scene units: (x, z, −y)
     const { position: p, up: u } = observerAt(where.lat, where.lon);
     const current = (sky = { ...where, place: new Vector3(p[0], p[2], -p[1]).divideScalar(6371), up: new Vector3(u[0], u[2], -u[1]), dome: null as Dome | null });
-    showSkyView();
+    showFindable();
     globe.flyTo(placeNow()!);
     const count = () => void catalog.sky(where.lat, where.lon, clock.time).then((counts) => sky === current && onSky(counts));
     count();
@@ -344,12 +354,22 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
     selectFound(candidate: Candidate) {
       select({ candidates: [candidate], index: 0 }, true);
     },
-    /** Pick out a group by its slug, or null for everything; resolves with how many are in it. */
+    /** Show only a group, picked by its slug, or null for everything; resolves with how many are in it. */
     async setGroup(slug: string | null) {
       const group = slug ? GROUPS.find((g) => g.slug === slug) : undefined;
       filter = group ? group.filter : -1;
-      if (!launch) satellites.setFilter(filter);
-      return group ? catalog.count(group.filter) : 0;
+      filterCount = 0;
+      if (!launch) {
+        satellites.setFilter(filter);
+        satellites.setMarked(0);
+        showFindable();
+      }
+      if (!group) return 0;
+      const count = await catalog.count(group.filter);
+      if (filter !== group.filter) return count;
+      filterCount = count;
+      if (!launch) satellites.setMarked(ringFor(count));
+      return count;
     },
     setColourBy(mode: ColourBy) {
       satellites.setColourBy(COLOUR_BY[mode]);
@@ -370,7 +390,7 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
     /** Everything, only what's inside the dome, or only what can be seen there by eye. */
     setSkyShowing(showing: SkyShowing) {
       skyMode = SKY_MODES[showing];
-      showSkyView();
+      showFindable();
     },
     /** The orbits of the space stations, for the pass search. */
     stationOrbits: (norads: number[]) => catalog.orbits(norads),
