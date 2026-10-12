@@ -110,6 +110,10 @@
     else if (panel) selection.insets = { right: innerWidth - panel.getBoundingClientRect().left, bottom: 0 };
   });
 
+  // The heading keeps clear of whatever the corner holds, and a sheet's header is at least as tall as it
+  let cornerWidth = $state(0);
+  let cornerHeight = $state(0);
+
   let dragging = $state(false);
   /** Finger speed in px/ms, upward positive, smoothed over the last few moves; a pause before letting go zeroes it. */
   type Motion = { lastY: number; lastTime: number; velocity: number };
@@ -219,7 +223,10 @@
 </script>
 
 <aside bind:this={panel} class="panel" class:sheet style:height={sheet ? `${height.current}px` : undefined} aria-labelledby={label}>
-  <header class:paired={!!corner} role="group" bind:offsetHeight={headerHeight} onpointerdown={onDragStart} onpointermove={onDragMove} onpointerup={onDragEnd} onpointercancel={onDragEnd}>
+  <header
+    style:--corner-room={cornerWidth ? `${cornerWidth + 8}px` : undefined}
+    style:min-height={sheet && cornerHeight ? `calc(var(--space-3) + ${cornerHeight + 8}px)` : undefined}
+    role="group" bind:offsetHeight={headerHeight} onpointerdown={onDragStart} onpointermove={onDragMove} onpointerup={onDragEnd} onpointercancel={onDragEnd}>
     {#if sheet}
       <!-- Dragging the header moves the sheet; the grip does the same from a keyboard -->
       <button
@@ -231,7 +238,7 @@
       ></button>
     {/if}
     {@render header()}
-    <div class="corner" onpointerdown={(e) => e.stopPropagation()} role="presentation">
+    <div class="corner" bind:clientWidth={cornerWidth} bind:clientHeight={cornerHeight} onpointerdown={(e) => e.stopPropagation()} role="presentation">
       {@render corner?.()}
       <!-- Phones swipe the sheet away; the button stays for keyboards and screen readers, which can't -->
       <button class="chip icon close" type="button" aria-label="Close" onclick={onclose}>
@@ -287,7 +294,8 @@
     clip-path: polygon(var(--chamfer) 0, calc(100% - var(--chamfer)) 0, 100% var(--chamfer), 100% 100%, 0 100%, 0 var(--chamfer));
   }
 
-  /* --corner-room keeps the heading clear of the corner buttons; content lower down may reclaim it */
+  /* --corner-room keeps the heading clear of the corner buttons (measured once they're laid out); content lower down
+     may reclaim it */
   header {
     --corner-room: 3.25rem;
     position: relative;
@@ -295,19 +303,11 @@
     padding-right: var(--corner-room);
   }
 
-  header.paired {
-    --corner-room: 6.5rem;
-  }
-
   .sheet header {
     --corner-room: 0px;
     padding-top: var(--space-4);
     cursor: grab;
     touch-action: none;
-  }
-
-  .sheet header.paired {
-    --corner-room: 3.25rem;
   }
 
   /* Widened by a chip row's overhang either side, so that row's focus rings fit without the list panning sideways */

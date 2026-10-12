@@ -4,6 +4,7 @@
   import { clock } from '../../time/clock';
   import { accuracyGrade, type Grade, type OrbitClass } from '../../orbit/describe';
   import { view } from '../view.svelte';
+  import { sky } from '../sky.svelte';
   import { loadNames, names as shared } from '../names.svelte';
   import Sheet from './Sheet.svelte';
 
@@ -93,6 +94,14 @@
     setTimeout(() => (copied = false), 2000);
   }
 
+  // Shown alone, the toggle brings back what was there: the sky over the chosen place, or everything.
+  // [accessible name, wide label, narrow label]
+  const solo = $derived(
+    !selection.solo ? ['Show only this object', 'Show only', 'Only']
+    : sky.place && sky.showing !== 'all' ? ['Show sky again', 'Show sky', 'Sky']
+    : ['Show all objects again', 'Show all', 'All'],
+  );
+
   // A launch group belongs to the object it was shown for: any change of selection clears it
   let shownFor = -1;
   $effect(() => {
@@ -101,6 +110,17 @@
     shownFor = norad;
   });
 </script>
+
+{#snippet actions(short: boolean)}
+  <button class="button ride" type="button" onclick={() => selection.follow()} disabled={!now}>{short ? 'Follow' : 'Follow orbit'}</button>
+  <!-- Everything else drops away, so this one object can be watched on its own; the label says what a press does -->
+  <button class="chip solo" class:on={selection.solo} type="button" aria-label={solo[0]} onclick={() => selection.setSolo(!selection.solo)}>
+    {#if short}
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M2 12 8 6.5h8l6 5.5-6 5.5H8z" fill="none" stroke="currentColor" stroke-width="1.6" /><path d="M12 9l3 3-3 3-3-3z" fill="currentColor" /></svg>
+    {/if}
+    {short ? solo[2] : solo[1]}
+  </button>
+{/snippet}
 
 {#if selected}
   <Sheet label="object-name" key={selected.norad} onclose={() => selection.close()}>
@@ -111,13 +131,13 @@
         <span>NORAD <span class="figure">{selected.norad}</span></span>
         {#if details?.cospar}<span>International <span class="figure">{details.cospar}</span></span>{/if}
       </p>
+      <!-- Wide panels: under the name, which needs the room beside it -->
+      <div class="top">{@render actions(false)}</div>
     {/snippet}
 
     {#snippet corner()}
-      <!-- Everything else drops away, so this one object can be watched on its own -->
-      <button class="chip icon solo" type="button" aria-label="Show only this object" aria-pressed={selection.solo} title="Show only this object" onclick={() => selection.setSolo(!selection.solo)}>
-        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 2 22 12 12 22 2 12zm0 3.2L5.2 12l6.8 6.8 6.8-6.8z" fill="currentColor" fill-rule="evenodd" opacity="0.45" /><path d="M12 8.2 15.8 12 12 15.8 8.2 12z" fill="currentColor" /></svg>
-      </button>
+      <!-- The bottom sheet: stacked in the corner, so they're there while it's at its lowest -->
+      <div class="stack">{@render actions(true)}</div>
     {/snippet}
 
     {#snippet body()}
@@ -209,7 +229,6 @@
         </section>
 
         <div class="actions">
-          <button class="button" type="button" onclick={() => selection.follow()} disabled={!now}>Follow</button>
           <button class="chip" type="button" onclick={() => share(details.name, details.norad)}>{copied ? 'Link copied' : 'Share'}</button>
           {#if view.isConstellation(details.name) && details.cospar}
             <button class="chip" type="button" aria-pressed={view.launchCount !== null} onclick={() => view.showLaunch(view.launchCount === null, details.cospar)}>
@@ -228,12 +247,46 @@
 {/if}
 
 <style>
-  /* On: the amber facet */
-  .solo[aria-pressed='true'] {
+  .top {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin: 0 0 var(--space-4);
+  }
+
+  .stack {
+    display: none;
+  }
+
+  /* The same media query that makes the panel a bottom sheet */
+  @media (orientation: portrait) and (max-width: 899px) {
+    .top {
+      display: none;
+    }
+
+    .stack {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+
+    .stack > * {
+      justify-content: center;
+      gap: 6px;
+      padding: 0 var(--space-3);
+    }
+  }
+
+  .ride {
+    font-size: 0.9375rem;
+  }
+
+  /* Shown alone: the amber facet, as on the group chip, until it's pressed again */
+  .solo.on {
     color: var(--void);
   }
 
-  .solo[aria-pressed='true']::before {
+  .solo.on::before {
     background: linear-gradient(155deg, color-mix(in oklab, var(--glint), white 22%) 0 48%, var(--glint) 48% 100%);
   }
 
