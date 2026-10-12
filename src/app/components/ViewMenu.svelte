@@ -1,6 +1,7 @@
 <script lang="ts">
   import { GROUPS, type ColourBy } from '../../data/groups';
   import { view } from '../view.svelte';
+  import { rise, unfold } from '../motion';
 
   const COLOURS: { mode: ColourBy; label: string; key: [string, string][] }[] = [
     {
@@ -80,8 +81,9 @@
   </button>
 
   {#if open}
-    <div bind:this={panel} id="view-panel" class="panel" role="dialog" aria-label="View options" tabindex="-1" onkeydown={onKey}>
-      <section aria-labelledby="pick-title">
+    <!-- It unfolds out of the button, and its contents settle in behind -->
+    <div bind:this={panel} id="view-panel" class="panel" role="dialog" aria-label="View options" tabindex="-1" onkeydown={onKey} in:unfold out:unfold>
+      <section aria-labelledby="pick-title" in:rise={{ delay: 90 }}>
         <h3 id="pick-title">Pick out</h3>
         <div class="chips">
           {#each GROUPS as group (group.slug)}
@@ -92,7 +94,7 @@
         </div>
       </section>
 
-      <section aria-labelledby="colour-title">
+      <section aria-labelledby="colour-title" in:rise={{ delay: 150 }}>
         <h3 id="colour-title">Colour by</h3>
         <div class="chips" role="radiogroup" aria-labelledby="colour-title">
           {#each COLOURS as option (option.mode)}
@@ -101,10 +103,13 @@
             </button>
           {/each}
         </div>
+        <!-- Two rows whatever the key, so the panel never jumps; a new key's entries fade up in turn -->
         <ul class="key">
-          {#each current.key as [colour, label] (label)}
-            <li><span class="swatch" style:background={colour}></span>{label}</li>
-          {/each}
+          {#key view.colourBy}
+            {#each current.key as [colour, label], i (label)}
+              <li in:rise={{ delay: i * 35, distance: 4, duration: 300 }}><span class="swatch" style:background={colour}></span>{label}</li>
+            {/each}
+          {/key}
         </ul>
       </section>
 
@@ -123,6 +128,19 @@
     padding: 0;
   }
 
+  /* Open, the three layers of the icon fan apart a little */
+  .icon path {
+    transition: translate 0.4s var(--spring);
+  }
+
+  .icon[aria-expanded='true'] path:first-child {
+    translate: 0 -1.5px;
+  }
+
+  .icon[aria-expanded='true'] path:last-child {
+    translate: 0 1.5px;
+  }
+
   .panel {
     position: absolute;
     top: calc(100% + var(--space-2));
@@ -134,18 +152,10 @@
     padding: var(--space-4) var(--space-4) var(--space-2);
     background: linear-gradient(155deg, var(--raise) 0 14%, var(--deck) 14% 100%);
     clip-path: var(--facet-cut);
-    animation: open 0.2s cubic-bezier(0.2, 0.7, 0.2, 1);
   }
 
   .panel:focus {
     outline: none;
-  }
-
-  @keyframes open {
-    from {
-      opacity: 0;
-      translate: 0 -6px;
-    }
   }
 
   section {
@@ -171,20 +181,38 @@
 
   .chips .chip {
     font-size: var(--size-label);
+    transition: color 0.24s var(--spring);
   }
 
-  /* Chosen: the amber facet */
+  /* Chosen: the amber facet, swept in from the lit upper-left corner, and folded back there when let go */
+  .chips .chip::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: linear-gradient(155deg, color-mix(in oklab, var(--glint), white 22%) 0 48%, var(--glint) 48% 100%);
+    clip-path: polygon(var(--chamfer) 0, var(--chamfer) 0, var(--chamfer) 0, 0 var(--chamfer), 0 var(--chamfer), 0 var(--chamfer));
+    transition:
+      clip-path 0.38s var(--spring),
+      filter 0.2s;
+  }
+
   .chip.on {
     color: var(--void);
   }
 
-  .chip.on::before {
-    background: linear-gradient(155deg, color-mix(in oklab, var(--glint), white 22%) 0 48%, var(--glint) 48% 100%);
+  .chip.on::after {
+    clip-path: var(--facet-cut);
+  }
+
+  .chip.on:hover::after {
+    filter: brightness(1.08);
   }
 
   .key {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(1lh, auto));
     gap: var(--space-2) var(--space-4);
     margin: var(--space-3) 0 0;
     padding: 0;

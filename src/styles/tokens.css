@@ -37,4 +37,7 @@
   --chamfer: 10px;
   --facet-cut: polygon(var(--chamfer) 0, 100% 0, 100% calc(100% - var(--chamfer)), calc(100% - var(--chamfer)) 100%, 0 100%, 0 var(--chamfer));
   --gutter: max(1rem, env(safe-area-inset-left));
+
+  /* What you touch moves on a spring (damping 0.8, as in src/app/motion.ts): it overshoots 1.5% and settles */
+  --spring: linear(0, 0.034, 0.117, 0.226, 0.344, 0.461, 0.57, 0.666, 0.749, 0.817, 0.873, 0.916, 0.949, 0.973, 0.99, 1.002, 1.009, 1.013, 1.015, 1.015, 1.014, 1.013, 1.011, 1.009, 1.008, 1.006, 1.005, 1.003, 1.002, 1.002, 1.001, 1.001, 1);
 }
