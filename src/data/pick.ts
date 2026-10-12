@@ -32,6 +32,8 @@ export function findNearby(
   { x, y, radius, width, height, viewProjection: m, camera, time }: Omit<PickRequest, 'type' | 'id'>,
   limit = 8,
   kinds = ALL_KINDS,
+  /** A further say on what can be found, given its slot and TEME position (km). */
+  accept?: (slot: number, position: Float64Array) => boolean,
 ): Candidate[] {
   const [cx, cy, cz] = camera;
   const outside = cx * cx + cy * cy + cz * cz - 1;
@@ -51,6 +53,7 @@ export function findNearby(
     const sy = ((1 - (m[1]! * px + m[5]! * py + m[9]! * pz + m[13]!) / w) / 2) * height;
     const distance = Math.hypot(sx - x, sy - y);
     if (distance > radius) continue;
+    if (accept && !accept(slot, position)) continue;
     // Hidden if the ray from the camera meets the Earth before it reaches the object
     const dx = px - cx, dy = py - cy, dz = pz - cz;
     const length = Math.hypot(dx, dy, dz);

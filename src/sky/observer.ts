@@ -53,3 +53,26 @@ export const elevation = (observer: Observer, p: ArrayLike<number>) => (Math.asi
 export function inDome(observer: Observer, p: ArrayLike<number>) {
   return elevationSine(observer, p) >= SIN_DOME && Math.hypot(p[0]!, p[1]!, p[2]!) <= EARTH_RADIUS_KM + DOME_TOP_KM;
 }
+
+/** Dark enough to see satellites once the Sun is 6° below the horizon, past civil twilight. */
+export const DARK_SUN_SINE = Math.sin((-6 * Math.PI) / 180);
+/**
+ * The faintest that counts as seen by eye: magnitude 4.5, about the faintest star a city sky shows at its best
+ * (Bortle class 8). As light relative to magnitude 6, the unit glint is measured in.
+ */
+const EYE_GLINT = 10 ** (0.4 * (6 - 4.5));
+
+/**
+ * Bright enough to see by eye from the place, for an object already known to be sunlit in a dark sky. Its glint is
+ * its light at 1,000 km, half lit; that falls off with the square of its range and follows a diffuse sphere's phase
+ * law, (π − φ)·cos φ + sin φ, which is 1 half lit. `sun` is a unit vector; positions are Earth-fixed km.
+ */
+export function brightEnough({ position: o }: Observer, p: ArrayLike<number>, sun: ArrayLike<number>, glint: number) {
+  const lx = o[0] - p[0]!;
+  const ly = o[1] - p[1]!;
+  const lz = o[2] - p[2]!;
+  const range = Math.hypot(lx, ly, lz);
+  const c = Math.max(-1, Math.min(1, (lx * sun[0]! + ly * sun[1]! + lz * sun[2]!) / range));
+  const phase = (Math.PI - Math.acos(c)) * c + Math.sqrt(1 - c * c);
+  return glint * phase >= EYE_GLINT * (range / 1000) ** 2;
+}

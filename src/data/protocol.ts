@@ -18,8 +18,10 @@ export type CatalogRequest =
   | { type: 'retry' }
   /** The kinds being shown, one bit per kind; hidden kinds can't be picked. */
   | { type: 'kinds'; mask: number }
-  /** How many shown objects are inside the dome over a place at a moment (ms), and how many of those are sunlit. */
+  /** How many shown objects are inside the dome over a place at a moment (ms), how many are sunlit and how many can be seen by eye. */
   | { type: 'sky'; id: number; lat: number; lon: number; time: number }
+  /** What the sky over a place lets taps find, or null for everything. */
+  | { type: 'skyView'; view: SkyView | null }
   /** The orbits of a few objects by catalogue number, for the pass search in its own worker. */
   | { type: 'orbits'; id: number; norads: number[] }
   | PickRequest
@@ -111,11 +113,26 @@ export interface CountedMessage {
   count: number;
 }
 
+/**
+ * The sky over a place, as taps should see it: mode 2 finds only what's inside its dome, 3 only what can be seen there
+ * by eye (1 and 0 find everything). The selected object can always be found.
+ */
+export interface SkyView {
+  lat: number;
+  lon: number;
+  mode: number;
+  keep: number;
+}
+
 export interface SkyCountMessage {
   type: 'skyCount';
   id: number;
   above: number;
   sunlit: number;
+  /** Bright enough to see by eye: sunlit, in a dark sky, magnitude 4.5 or brighter. */
+  seen: number;
+  /** The Sun is far enough down at the place for anything to be seen by eye. */
+  dark: boolean;
 }
 
 export interface OrbitsMessage {

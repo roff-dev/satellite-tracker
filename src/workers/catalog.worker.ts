@@ -27,6 +27,7 @@ import {
   type PickedMessage,
   type ProgressMessage,
   type SkyCountMessage,
+  type SkyView,
   type SearchResult,
   type Whereabouts,
 } from '../data/protocol';
@@ -35,7 +36,7 @@ import { createSearch } from '../data/search';
 import { orbitNumbers } from '../orbit/describe';
 import { STATION, VISUAL, findNearby } from '../data/pick';
 import { EPOCH_DAY, GLINT, GROUPS, KIND, LAUNCH_DAY, STRIDE, keplerPosition, writeElements } from '../orbit/elements';
-import { inDome, observerAt, toEarthFixed } from '../sky/observer';
+import { DARK_SUN_SINE, brightEnough, inDome, observerAt, toEarthFixed, type Observer } from '../sky/observer';
 import { decodeRcsTable, estimateBrightness, glintIntensity, type ObjectType } from '../orbit/brightness';
 
 const scope = self as unknown as DedicatedWorkerGlobalScope;
@@ -403,7 +404,14 @@ async function loadCatalogue() {
 }
 
 function pick({ id, ...request }: PickRequest) {
-  const message: PickedMessage = { type: 'picked', id, candidates: findNearby(master, objects, anchorTime, request, 8, shownKinds) };
+  // Over a chosen place showing only its own sky, a tap finds only what's drawn there
+  const view = skyView;
+  let accept: ((slot: number, position: Float64Array) => boolean) | undefined;
+  if (view && view.mode >= 2) {
+    const frame = skyFrame(view.lat, view.lon, request.time);
+    accept = (slot, position) => slot === view.keep || seenFrom(frame, slot, position) >= view.mode - 1;
+  }
+  const message: PickedMessage = { type: 'picked', id, candidates: findNearby(master, objects, anchorTime, request, 8, shownKinds, accept) };
   scope.postMessage(message);
 }
 
@@ -499,32 +507,66 @@ function describe({ id, slot, time, paths }: DescribeRequest) {
 const teme = new Float64Array(3);
 const fixed = new Float64Array(3);
 
-/**
- * Shown objects inside the dome over a place, and how many of those are sunlit, with the shader's own orbit maths
- * at the moment asked, so the count matches the rings drawn.
- */
-function skyCount(id: number, lat: number, lon: number, time: number) {
+/** What taps may find over a chosen place; null finds everything. */
+let skyView: SkyView | null = null;
+
+/** A place's sky at a moment: where it stands, the Earth's turn, the Sun's direction (TEME and Earth-fixed). */
+interface SkyFrame {
+  observer: Observer;
+  gmst: number;
+  sun: number[];
+  sunFixed: ArrayLike<number>;
+  /** The Sun is far enough below the place's horizon for anything to be seen by eye. */
+  dark: boolean;
+}
+
+function skyFrame(lat: number, lon: number, time: number): SkyFrame {
   const observer = observerAt(lat, lon);
   const date = new Date(time);
-  const g = gstime(date);
+  const gmst = gstime(date);
   const { x, y, z } = sunPos(jday(date)).rsun;
   const n = Math.hypot(x, y, z);
-  const sx = x / n, sy = y / n, sz = z / n;
+  const sun = [x / n, y / n, z / n];
+  const sunFixed = toEarthFixed(sun, gmst);
+  const { up } = observer;
+  return { observer, gmst, sun, sunFixed, dark: sunFixed[0]! * up[0] + sunFixed[1]! * up[1] + sunFixed[2]! * up[2] <= DARK_SUN_SINE };
+}
+
+/** Outside the cylinder of Earth's shadow, for a TEME position (km) and a unit vector towards the Sun. */
+function sunlit(p: ArrayLike<number>, [sx, sy, sz]: number[]) {
+  const along = p[0]! * sx! + p[1]! * sy! + p[2]! * sz!;
+  const cx = p[1]! * sz! - p[2]! * sy!, cy = p[2]! * sx! - p[0]! * sz!, cz = p[0]! * sy! - p[1]! * sx!;
+  return along > 0 || cx * cx + cy * cy + cz * cz > EARTH_RADIUS_KM * EARTH_RADIUS_KM;
+}
+
+/** What a place sees of an object at a TEME position (km): 0 outside its dome, 1 inside, 2 inside and seen by eye. */
+function seenFrom(frame: SkyFrame, slot: number, position: ArrayLike<number>) {
+  if (!inDome(frame.observer, toEarthFixed(position, frame.gmst, fixed))) return 0;
+  return frame.dark && sunlit(position, frame.sun) && brightEnough(frame.observer, fixed, frame.sunFixed, master[slot * STRIDE + GLINT]!) ? 2 : 1;
+}
+
+/**
+ * Shown objects inside the dome over a place, how many of those are sunlit and how many can be seen by eye, with
+ * the shader's own orbit maths at the moment asked, so the count matches what's drawn.
+ */
+function skyCount(id: number, lat: number, lon: number, time: number) {
+  const frame = skyFrame(lat, lon, time);
   const dt = (time - anchorTime) / 1000;
   const day = time / DAY_MS;
   let above = 0;
-  let sunlit = 0;
+  let lit = 0;
+  let seen = 0;
   for (let slot = 0; slot < recs.length; slot++) {
     const o = slot * STRIDE;
     if (!(master[o]! > 0) || objects[slot]!.launchDay > day || !((shownKinds >> master[o + KIND]!) & 1)) continue;
     keplerPosition(master, o, dt, teme);
-    if (!inDome(observer, toEarthFixed(teme, g, fixed))) continue;
+    const level = seenFrom(frame, slot, teme);
+    if (!level) continue;
     above++;
-    const along = teme[0]! * sx + teme[1]! * sy + teme[2]! * sz;
-    const cx = teme[1]! * sz - teme[2]! * sy, cy = teme[2]! * sx - teme[0]! * sz, cz = teme[0]! * sy - teme[1]! * sx;
-    if (along > 0 || cx * cx + cy * cy + cz * cz > EARTH_RADIUS_KM * EARTH_RADIUS_KM) sunlit++;
+    if (sunlit(teme, frame.sun)) lit++;
+    if (level === 2) seen++;
   }
-  const message: SkyCountMessage = { type: 'skyCount', id, above, sunlit };
+  const message: SkyCountMessage = { type: 'skyCount', id, above, sunlit: lit, seen, dark: frame.dark };
   scope.postMessage(message);
 }
 
@@ -633,6 +675,10 @@ scope.onmessage = (event: MessageEvent<CatalogRequest>) => {
   if (request.type === 'retry') return load();
   if (request.type === 'kinds') {
     shownKinds = request.mask;
+    return;
+  }
+  if (request.type === 'skyView') {
+    skyView = request.view;
     return;
   }
   if (request.type === 'pick') return pick(request);

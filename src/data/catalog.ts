@@ -1,4 +1,4 @@
-import type { Candidate, CatalogEvent, CatalogRequest, CountedMessage, DescribedMessage, ElementsMessage, OrbitsMessage, PickRequest, ProgressMessage, SearchResult, SearchedMessage, SkyCountMessage } from './protocol';
+import type { Candidate, CatalogEvent, CatalogRequest, CountedMessage, DescribedMessage, ElementsMessage, OrbitsMessage, PickRequest, ProgressMessage, SearchResult, SearchedMessage, SkyCountMessage, SkyView } from './protocol';
 
 type Reply = Extract<CatalogEvent, { id: number }>;
 /** A request that expects a reply, before its id is attached. */
@@ -121,10 +121,14 @@ export function connectCatalog(startTime: number, handlers: CatalogHandlers) {
     retry() {
       send({ type: 'retry' });
     },
-    /** Shown objects inside the dome over a place at a moment, and how many are sunlit. */
+    /** Shown objects inside the dome over a place at a moment, how many are sunlit, and how many can be seen by eye. */
     async sky(lat: number, lon: number, time: number) {
-      const { above, sunlit } = await ask<SkyCountMessage>({ type: 'sky', lat, lon, time });
-      return { above, sunlit };
+      const { above, sunlit, seen, dark } = await ask<SkyCountMessage>({ type: 'sky', lat, lon, time });
+      return { above, sunlit, seen, dark };
+    },
+    /** What the sky over a place lets taps find, or null for everything. */
+    setSkyView(view: SkyView | null) {
+      send({ type: 'skyView', view });
     },
     /** The orbits of a few objects by catalogue number (the ones loaded). */
     async orbits(norads: number[]) {
