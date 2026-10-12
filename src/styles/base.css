@@ -64,6 +64,9 @@ a {
   color: var(--void);
   font-weight: 650;
   text-decoration: none;
+  /* Controls: a quick double click presses twice, it doesn't highlight the label */
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .button::before {
@@ -102,6 +105,8 @@ a {
   color: var(--ink);
   font: 600 0.9375rem / 1 var(--font-text);
   cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .chip::before {

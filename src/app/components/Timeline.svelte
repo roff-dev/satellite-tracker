@@ -276,7 +276,10 @@
 </section>
 
 <style>
+  /* Dragging across it scrubs; nothing in it gets highlighted on the way */
   .timeline {
+    -webkit-user-select: none;
+    user-select: none;
     position: fixed;
     z-index: 3;
     left: var(--gutter);

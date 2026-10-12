@@ -37,7 +37,10 @@
 
 <style>
   /* Wide screens: a quiet list in the space under the headline, just above the timeline (and any sheet under it) */
+  /* Tapped quickly they toggle; their labels never get highlighted */
   .types {
+    -webkit-user-select: none;
+    user-select: none;
     position: fixed;
     left: var(--gutter);
     bottom: calc(var(--sheet, 0px) + var(--timeline, 7rem) + var(--space-6) + env(safe-area-inset-bottom));
