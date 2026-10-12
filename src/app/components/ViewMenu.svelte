@@ -92,7 +92,7 @@
     <!-- It unfolds out of the button, and its contents settle in behind -->
     <div bind:this={panel} id="view-panel" class="panel" role="dialog" aria-label="View options" tabindex="-1" onkeydown={onKey} in:unfold out:unfold>
       <section aria-labelledby="pick-title" in:rise={{ delay: 90 }}>
-        <h3 id="pick-title">Pick out</h3>
+        <h2 id="pick-title">Pick out</h2>
         <div class="chips">
           {#each GROUPS as group (group.slug)}
             <button class="chip" class:on={view.group === group.slug} type="button" aria-pressed={view.group === group.slug} onclick={() => view.setGroup(view.group === group.slug ? null : group.slug)}>
@@ -103,7 +103,7 @@
       </section>
 
       <section aria-labelledby="colour-title" in:rise={{ delay: 150 }}>
-        <h3 id="colour-title">Colour by</h3>
+        <h2 id="colour-title">Colour by</h2>
         <div class="chips" role="radiogroup" aria-labelledby="colour-title">
           {#each COLOURS as option (option.mode)}
             <button class="chip" class:on={view.colourBy === option.mode} type="button" role="radio" aria-checked={view.colourBy === option.mode} onclick={() => view.setColourBy(option.mode)}>
@@ -187,7 +187,7 @@
     border-top: 1px solid var(--line);
   }
 
-  h3 {
+  h2 {
     margin: 0 0 var(--space-3);
     font-size: var(--size-label);
     font-weight: 600;

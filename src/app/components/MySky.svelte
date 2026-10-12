@@ -85,7 +85,7 @@
 
   {#if sky.choosing}
     <div bind:this={panel} class="chooser" role="dialog" aria-labelledby="chooser-title" tabindex="-1" onkeydown={onKey}>
-      <h3 id="chooser-title">Your sky</h3>
+      <h2 id="chooser-title">Your sky</h2>
       <p>See what’s above you right now, and when the space stations next pass over.</p>
       <button class="button" type="button" onclick={useLocation} disabled={locating}>{locating ? 'Finding you…' : 'Use my location'}</button>
       {#if message}<p class="message" role="status">{message}</p>{/if}
@@ -158,7 +158,7 @@
     }
   }
 
-  h3 {
+  h2 {
     margin: 0 0 var(--space-2);
     font-size: var(--size-label);
     font-weight: 600;
