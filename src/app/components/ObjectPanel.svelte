@@ -1,11 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { Spring } from 'svelte/motion';
   import { selection } from '../selection.svelte';
   import { clock } from '../../time/clock';
   import { accuracyGrade, type Grade, type OrbitClass } from '../../orbit/describe';
   import { view } from '../view.svelte';
   import { loadNames, names as shared } from '../names.svelte';
+  import Sheet from './Sheet.svelte';
 
   const KIND = { payload: 'Satellite', rocket: 'Rocket body', debris: 'Debris' } as const;
   const CLASS: Record<OrbitClass, string> = {
@@ -66,6 +66,8 @@
     return KIND[type];
   }
 
+  onMount(loadNames);
+
   // Said once per selection, when its position is first known
   let announcement = $state('');
   let announced = -1;
@@ -91,243 +93,34 @@
     setTimeout(() => (copied = false), 2000);
   }
 
-  // On a phone held upright the panel is a bottom sheet with two resting heights. It opens at the lower, just tall
-  // enough for the header, so the object and its path stay in view; fully open, it leaves the top bar and the docked
-  // timeline row above it clear
-  type Detent = 'peek' | 'full';
-  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let sheet = $state(false);
-  let viewport = $state(800);
-  let detent = $state<Detent>('peek');
-  let headerHeight = $state(96);
-  let safeBottom = $state(0);
-  const heights = $derived({
-    peek: Math.round(headerHeight + safeBottom) + 26,
-    full: Math.round(viewport - Math.max(view.topInset, 72) - view.timelineHeight - 20),
-  });
-  const height = new Spring(0, { stiffness: 0.15, damping: 0.8 });
-
-  onMount(() => {
-    const query = matchMedia('(orientation: portrait) and (max-width: 899px)');
-    const update = () => {
-      sheet = query.matches;
-      viewport = innerHeight;
-    };
-    update();
-    query.addEventListener('change', update);
-    addEventListener('resize', update);
-    return () => {
-      query.removeEventListener('change', update);
-      removeEventListener('resize', update);
-    };
-  });
-
   // A launch group belongs to the object it was shown for: any change of selection clears it
   let shownFor = -1;
   $effect(() => {
     const norad = selected?.norad ?? -1;
-    if (norad !== shownFor) {
-      view.launchCount = null;
-      closing = false;
-    }
+    if (norad !== shownFor) view.launchCount = null;
     shownFor = norad;
-  });
-
-  // A new selection opens the sheet at its lowest; swapping between nearby objects keeps its height
-  let wasOpen = false;
-  $effect(() => {
-    const open = !!selected;
-    if (open && !wasOpen) detent = 'peek';
-    if (open) loadNames();
-    wasOpen = open;
-  });
-  $effect(() => {
-    const target = selected && sheet && !closing ? heights[detent] : 0;
-    void height.set(target, { instant: reducedMotion || dragging });
-  });
-
-  // A sheet sent away slides down first, and the selection clears once it's nearly gone
-  let closing = $state(false);
-  function closeSheet() {
-    dragging = false;
-    if (reducedMotion) return selection.close();
-    closing = true;
-  }
-  $effect(() => {
-    if (closing && height.current < 24) {
-      closing = false;
-      selection.close();
-    }
-  });
-
-  $effect(() => {
-    selection.sheetOpen = !!selected && sheet && !selection.following;
-  });
-  $effect(() => {
-    document.documentElement.style.setProperty('--sheet', selected && sheet && !selection.following ? `${height.current}px` : '0px');
-  });
-
-  // Tell the globe how much of the screen the panel takes, so it can move into the space that's left.
-  // A fully open sheet leaves nothing worth framing, so the globe stays where it sits above the lower height.
-  let panel = $state<HTMLElement>();
-  $effect(() => {
-    if (!selected) {
-      selection.insets = { right: 0, bottom: 0 };
-    } else if (sheet) {
-      selection.insets = { right: 0, bottom: heights.peek };
-    } else if (panel) {
-      selection.insets = { right: innerWidth - panel.getBoundingClientRect().left, bottom: 0 };
-    }
-  });
-
-  let dragging = $state(false);
-  /** Finger speed in px/ms, upward positive, smoothed over the last few moves; a pause before letting go zeroes it. */
-  type Motion = { lastY: number; lastTime: number; velocity: number };
-  function follow(motion: Motion, y: number, time: number) {
-    const dt = time - motion.lastTime;
-    if (dt > 0) motion.velocity = 0.7 * ((motion.lastY - y) / dt) + 0.3 * motion.velocity;
-    motion.lastY = y;
-    motion.lastTime = time;
-  }
-  const releaseSpeed = (motion: Motion, time: number) => (time - motion.lastTime > 100 ? 0 : motion.velocity);
-  const FLICK = 0.5;
-
-  let drag: (Motion & { y: number; height: number; from: Detent }) | null = null;
-
-  function onDragStart(event: PointerEvent) {
-    if (!sheet) return;
-    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-    drag = { y: event.clientY, height: height.current, from: detent, lastY: event.clientY, lastTime: event.timeStamp, velocity: 0 };
-    dragging = true;
-  }
-
-  function onDragMove(event: PointerEvent) {
-    if (!drag) return;
-    follow(drag, event.clientY, event.timeStamp);
-    void height.set(Math.min(heights.full, Math.max(0, drag.height + drag.y - event.clientY)), { instant: true });
-  }
-
-  function onDragEnd(event: PointerEvent) {
-    if (!drag) return;
-    const velocity = releaseSpeed(drag, event.timeStamp);
-    const from = drag.from;
-    drag = null;
-    // A flick moves one step from where the drag began: up to fully open, down to the header, then away
-    if (velocity < -FLICK) {
-      if (from === 'peek') return closeSheet();
-      detent = 'peek';
-    } else if (velocity > FLICK) {
-      detent = 'full';
-    } else {
-      // Let go without a flick: it settles on the nearer height, or closes if lowered almost away
-      if (height.current < heights.peek * 0.6) return closeSheet();
-      detent = height.current > (heights.peek + heights.full) / 2 ? 'full' : 'peek';
-    }
-    dragging = false;
-    void height.set(heights[detent]);
-  }
-
-  // Pulling the list down from its top closes the sheet, as long as the list was already resting at the top
-  // when the finger went down; reaching the top while scrolling up never closes it, even with the next swipe
-  const SETTLED_MS = 400;
-  let body = $state<HTMLElement>();
-  $effect(() => {
-    const list = body;
-    if (!list || !sheet) return;
-    let lastScroll = 0;
-    let pull: (Motion & { x: number; y: number; height: number; armed: boolean; mode: 'sheet' | 'list' | null }) | null = null;
-    const onScroll = () => (lastScroll = performance.now());
-    const onStart = (event: TouchEvent) => {
-      const touch = event.touches[0];
-      pull =
-        touch && event.touches.length === 1
-          ? { x: touch.clientX, y: touch.clientY, height: height.current, armed: list.scrollTop <= 0 && performance.now() - lastScroll > SETTLED_MS, mode: null, lastY: touch.clientY, lastTime: event.timeStamp, velocity: 0 }
-          : null;
-    };
-    const onMove = (event: TouchEvent) => {
-      const touch = event.touches[0];
-      if (!pull || !touch || event.touches.length !== 1) return;
-      const dx = Math.abs(touch.clientX - pull.x);
-      const dy = touch.clientY - pull.y;
-      if (!pull.mode) {
-        // Held still until the gesture is decided, so the list doesn't start scrolling first; sideways
-        // swipes (the row of nearby objects) are left alone
-        if (pull.armed && dy > dx) event.preventDefault();
-        if (Math.hypot(dx, dy) < 6) return;
-        pull.mode = pull.armed && dy > dx ? 'sheet' : 'list';
-        if (pull.mode === 'sheet') dragging = true;
-      }
-      if (pull.mode !== 'sheet') return;
-      event.preventDefault();
-      follow(pull, touch.clientY, event.timeStamp);
-      void height.set(Math.max(0, pull.height - Math.max(0, dy)), { instant: true });
-    };
-    const onEnd = (event: TouchEvent) => {
-      if (pull?.mode === 'sheet') {
-        const pulled = pull.height - height.current;
-        if (pulled >= Math.max(80, pull.height * 0.2) || releaseSpeed(pull, event.timeStamp) < -FLICK) closeSheet();
-        else {
-          dragging = false;
-          void height.set(heights[detent]);
-        }
-      }
-      pull = null;
-    };
-    list.addEventListener('scroll', onScroll, { passive: true });
-    list.addEventListener('touchstart', onStart, { passive: true });
-    list.addEventListener('touchmove', onMove, { passive: false });
-    list.addEventListener('touchend', onEnd);
-    list.addEventListener('touchcancel', onEnd);
-    return () => {
-      list.removeEventListener('scroll', onScroll);
-      list.removeEventListener('touchstart', onStart);
-      list.removeEventListener('touchmove', onMove);
-      list.removeEventListener('touchend', onEnd);
-      list.removeEventListener('touchcancel', onEnd);
-    };
   });
 </script>
 
-{#if selected && !selection.following}
-  <aside bind:this={panel} class="panel" class:sheet style:height={sheet ? `${height.current}px` : undefined} aria-labelledby="object-name">
-    <header role="group" bind:offsetHeight={headerHeight} onpointerdown={onDragStart} onpointermove={onDragMove} onpointerup={onDragEnd} onpointercancel={onDragEnd}>
-      {#if sheet}
-        <!-- Dragging the header moves the sheet; the grip does the same from a keyboard -->
-        <button
-          class="grip"
-          type="button"
-          aria-label={detent === 'full' ? 'Show less' : 'Show more'}
-          onclick={() => (detent = detent === 'full' ? 'peek' : 'full')}
-          onpointerdown={(e) => e.stopPropagation()}
-        ></button>
-      {/if}
+{#if selected}
+  <Sheet label="object-name" key={selected.norad} onclose={() => selection.close()}>
+    {#snippet header()}
       <p class="kind">{kindOf(selected.station, selected.type, details?.working)}</p>
       <h2 id="object-name">{selected.name}</h2>
       <p class="ids">
         <span>NORAD <span class="figure">{selected.norad}</span></span>
         {#if details?.cospar}<span>International <span class="figure">{details.cospar}</span></span>{/if}
       </p>
-      <div class="corner">
-        <!-- Everything else drops away, so this one object can be watched on its own -->
-        <button
-          class="chip icon solo"
-          type="button"
-          aria-label="Show only this object"
-          aria-pressed={selection.solo}
-          title="Show only this object"
-          onclick={() => selection.setSolo(!selection.solo)}
-          onpointerdown={(e) => e.stopPropagation()}
-        >
-          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 2 22 12 12 22 2 12zm0 3.2L5.2 12l6.8 6.8 6.8-6.8z" fill="currentColor" fill-rule="evenodd" opacity="0.45" /><path d="M12 8.2 15.8 12 12 15.8 8.2 12z" fill="currentColor" /></svg>
-        </button>
-        <!-- Phones swipe the sheet away; the button stays for keyboards and screen readers, which can't -->
-        <button class="chip icon close" type="button" aria-label="Close" onclick={() => selection.close()} onpointerdown={(e) => e.stopPropagation()}>
-          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 2 14 13l-1 1L2 3zM13 2l1 1L3 14l-1-1z" fill="currentColor" /></svg>
-        </button>
-      </div>
-    </header>
+    {/snippet}
 
-    <div class="body" bind:this={body}>
+    {#snippet corner()}
+      <!-- Everything else drops away, so this one object can be watched on its own -->
+      <button class="chip icon solo" type="button" aria-label="Show only this object" aria-pressed={selection.solo} title="Show only this object" onclick={() => selection.setSolo(!selection.solo)}>
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 2 22 12 12 22 2 12zm0 3.2L5.2 12l6.8 6.8 6.8-6.8z" fill="currentColor" fill-rule="evenodd" opacity="0.45" /><path d="M12 8.2 15.8 12 12 15.8 8.2 12z" fill="currentColor" /></svg>
+      </button>
+    {/snippet}
+
+    {#snippet body()}
       {#if nearby.length}
         <section class="nearby" aria-labelledby="nearby-title">
           <h3 id="nearby-title">Also under your tap</h3>
@@ -421,150 +214,13 @@
           <p class="note launch">{number.format(view.launchCount)} objects from the same launch, joined in order along the orbit.</p>
         {/if}
       {/if}
-    </div>
+    {/snippet}
+
     <p class="visually-hidden" aria-live="polite">{announcement}{copied ? '. Link copied.' : ''}</p>
-    <!-- How much of the screen's foot the home indicator takes, so the lowest sheet clears it -->
-    <span class="safe-probe" bind:clientHeight={safeBottom} aria-hidden="true"></span>
-  </aside>
+  </Sheet>
 {/if}
 
 <style>
-  /* A facet-cut --deck panel with a lit --raise facet in its upper-left corner */
-  .panel {
-    position: fixed;
-    z-index: 3;
-    /* Below the search and view controls */
-    top: calc(var(--space-4) + env(safe-area-inset-top) + 44px + var(--space-6));
-    right: var(--gutter);
-    display: flex;
-    flex-direction: column;
-    width: min(380px, calc(100vw - 2 * var(--gutter)));
-    max-height: calc(100svh - 44px - 3 * var(--space-6) - var(--timeline, 7rem));
-    padding: var(--space-6) var(--space-6) 0;
-    isolation: isolate;
-    background: linear-gradient(155deg, var(--raise) 0 18%, var(--deck) 18% 100%);
-    clip-path: var(--facet-cut);
-    animation: arrive 0.28s cubic-bezier(0.2, 0.7, 0.2, 1);
-  }
-
-  @keyframes arrive {
-    from {
-      opacity: 0;
-      transform: translateX(12px);
-    }
-  }
-
-  /* Upright phones: the bottom sheet, its height set by the spring */
-  .panel.sheet {
-    top: auto;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    width: auto;
-    max-height: none;
-    padding: var(--space-3) var(--gutter) 0;
-    animation: none;
-    clip-path: polygon(var(--chamfer) 0, calc(100% - var(--chamfer)) 0, 100% var(--chamfer), 100% 100%, 0 100%, 0 var(--chamfer));
-  }
-
-  header {
-    position: relative;
-    flex: none;
-    padding-right: 6.5rem;
-    touch-action: none;
-  }
-
-  .sheet header {
-    padding-top: var(--space-4);
-    padding-right: 3.25rem;
-    cursor: grab;
-  }
-
-  /* Widened by the Nearby row's overhang either side, so that row's focus rings fit without the list panning sideways */
-  .body {
-    flex: 1 1 auto;
-    min-height: 0;
-    margin: 0 calc(-1 * var(--space-1));
-    padding: 0 var(--space-1) calc(var(--space-6) + env(safe-area-inset-bottom));
-    overflow: hidden auto;
-    overscroll-behavior: contain;
-  }
-
-  .grip {
-    position: absolute;
-    top: calc(-1 * var(--space-3));
-    left: 50%;
-    width: 4rem;
-    height: 28px;
-    translate: -50% 0;
-    padding: 0;
-    border: 0;
-    background: none;
-    cursor: pointer;
-  }
-
-  /* The visible grip: a short flat bar with cut ends */
-  .grip::before {
-    content: '';
-    position: absolute;
-    top: 12px;
-    left: 50%;
-    width: 2.5rem;
-    height: 4px;
-    translate: -50% 0;
-    background: var(--muted);
-    opacity: 0.5;
-    clip-path: polygon(3px 0, 100% 0, calc(100% - 3px) 100%, 0 100%);
-  }
-
-  .kind {
-    margin: 0 0 var(--space-1);
-    font-size: var(--size-label);
-    color: var(--muted);
-  }
-
-  h2 {
-    margin: 0;
-    font: 600 var(--size-title) / 1.1 var(--font-display);
-    letter-spacing: -0.02em;
-    overflow-wrap: anywhere;
-  }
-
-  .ids {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-1) var(--space-4);
-    margin: var(--space-2) 0 var(--space-4);
-    font-size: var(--size-label);
-    color: var(--muted);
-  }
-
-  .figure {
-    font-family: var(--font-data);
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-    color: var(--ink);
-  }
-
-  /* Show only this object, and on wide screens close */
-  .corner {
-    position: absolute;
-    top: 0;
-    right: 0;
-    display: flex;
-    gap: var(--space-2);
-  }
-
-  .sheet .corner {
-    top: var(--space-3);
-  }
-
-  .icon {
-    width: 44px;
-    justify-content: center;
-    padding: 0;
-  }
-
   /* On: the amber facet */
   .solo[aria-pressed='true'] {
     color: var(--void);
@@ -572,28 +228,6 @@
 
   .solo[aria-pressed='true']::before {
     background: linear-gradient(155deg, color-mix(in oklab, var(--glint), white 22%) 0 48%, var(--glint) 48% 100%);
-  }
-
-  /* Seen on a phone only when a keyboard reaches it */
-  .sheet .close:not(:focus-visible) {
-    position: absolute;
-    width: 1px;
-    min-height: 0;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-  }
-
-  section {
-    padding: var(--space-4) 0;
-    border-top: 1px solid var(--line);
-  }
-
-  h3 {
-    margin: 0 0 var(--space-3);
-    font-size: var(--size-label);
-    font-weight: 600;
-    color: var(--muted);
   }
 
   /* Away from now, the heading names the moment, its distance from now in amber as on the timeline */
@@ -605,50 +239,8 @@
     color: var(--glint);
   }
 
-  .safe-probe {
-    position: fixed;
-    bottom: 0;
-    width: 0;
-    height: env(safe-area-inset-bottom);
-    visibility: hidden;
-    pointer-events: none;
-  }
-
-  p {
-    margin: 0 0 var(--space-2);
-    font-size: 0.9375rem;
-    text-wrap: pretty;
-  }
-
-  .note {
-    font-size: var(--size-label);
-    color: var(--muted);
-  }
-
   .launch {
     margin-top: var(--space-3);
-  }
-
-  dl {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-3) var(--space-4);
-    margin: 0;
-  }
-
-  dl div {
-    min-width: 0;
-  }
-
-  dt {
-    font-size: var(--size-label);
-    color: var(--muted);
-  }
-
-  dd {
-    margin: 0;
-    font-size: 0.9375rem;
-    overflow-wrap: anywhere;
   }
 
   /* Text that says what the point's colour says */
@@ -739,13 +331,5 @@
     display: block;
     line-height: 44px;
     font-size: var(--size-label);
-  }
-
-  .actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-    padding-top: var(--space-4);
-    border-top: 1px solid var(--line);
   }
 </style>
