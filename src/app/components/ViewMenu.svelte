@@ -121,6 +121,12 @@
         </ul>
       </section>
 
+      <!-- The site's own pages, last and quiet -->
+      <nav class="pages" aria-label="About this site" in:rise={{ delay: 210 }}>
+        <a href="/about/">About</a>
+        <a href="/privacy/">Privacy</a>
+        <a href="/terms/">Terms</a>
+      </nav>
     </div>
   {/if}
 </div>
@@ -240,6 +246,33 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
+  }
+
+  /* Links as in running text, each a full-height target */
+  .pages {
+    display: flex;
+    gap: var(--space-6);
+    border-top: 1px solid var(--line);
+  }
+
+  .pages a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    font-size: var(--size-label);
+    color: var(--muted);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-decoration-color: var(--line);
+    text-underline-offset: 0.2em;
+    transition:
+      color 0.2s,
+      text-decoration-color 0.2s;
+  }
+
+  .pages a:hover {
+    color: var(--ink);
+    text-decoration-color: currentColor;
   }
 
   /* Each key colour as a small facet, the shape the points read as */
