@@ -1,13 +1,17 @@
 import {
+  AdditiveBlending,
   AmbientLight,
   BufferAttribute,
   BufferGeometry,
   Color,
   DirectionalLight,
+  GLSL3,
   Matrix4,
   Mesh,
   MeshStandardMaterial,
+  Points,
   Quaternion,
+  ShaderMaterial,
   Vector3,
   type Group,
   type PerspectiveCamera,
@@ -21,46 +25,40 @@ const FRAME_RADIUS = 65 * METRE;
 const FLY_IN_S = 1.6;
 const FLY_OUT_S = 1.3;
 const ISS = 25544;
-/** Real ISS arrays read as dark gold in sunlight; NASA's model has them blue. */
-const SOLAR_ARRAY = new Color('#8a6a2c');
-
-/** iss.bin: NASA's ISS model, decoded at build time, drawn with a flat colour per facet. */
-async function loadStation() {
-  const bytes = new Uint8Array(await (await fetch('/iss.bin')).arrayBuffer());
-  const view = new DataView(bytes.buffer);
-  let o = 4;
-  const materials = view.getUint8(o++);
-  const palette = Array.from({ length: materials }, (_, i) => new Color().setRGB(bytes[o + i * 3]! / 255, bytes[o + i * 3 + 1]! / 255, bytes[o + i * 3 + 2]! / 255, 'srgb'));
-  palette[1] = SOLAR_ARRAY;
-  o += materials * 3;
-  const vertices = view.getUint32(o, true);
-  const triangles = view.getUint32(o + 4, true);
-  o += 8;
-  const at = (v: number, axis: number) => view.getInt16(o + v * 6 + axis * 2, true) * 0.002;
-  const indexAt = o + vertices * 6;
-  const materialAt = indexAt + triangles * 6;
-  // Every facet its own three vertices, so flat shading gives each one its own normal and colour
-  const position = new Float32Array(triangles * 9);
-  const colour = new Float32Array(triangles * 9);
-  for (let t = 0; t < triangles; t++) {
-    const c = palette[bytes[materialAt + t]!]!;
-    for (let k = 0; k < 3; k++) {
-      const v = view.getUint16(indexAt + t * 6 + k * 2, true);
-      for (let axis = 0; axis < 3; axis++) position[t * 9 + k * 3 + axis] = at(v, axis);
-      colour.set([c.r, c.g, c.b], t * 9 + k * 3);
-    }
-  }
-  const geometry = new BufferGeometry();
-  geometry.setAttribute('position', new BufferAttribute(position, 3));
-  geometry.setAttribute('color', new BufferAttribute(colour, 3));
-  geometry.computeVertexNormals();
-  const mesh = new Mesh(geometry, new MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.7, metalness: 0.2 }));
-  mesh.matrixAutoUpdate = false;
-  mesh.frustumCulled = false;
-  return mesh;
-}
 
 const smootherstep = (t: number) => t * t * t * (t * (t * 6 - 15) + 10);
+
+/**
+ * The followed object's marker, drawn from its own position rather than by the satellites' shader. Up close, that
+ * shader's 32-bit positions are a metre or so out, which reads as the object shaking a few pixels every frame; placed
+ * from the CPU, the object less the camera is worked out in double precision.
+ */
+const markerVertex = /* glsl */ `
+  #include <common>
+  #include <logdepthbuf_pars_vertex>
+  uniform float uSize;
+  void main() {
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    gl_PointSize = uSize;
+    #include <logdepthbuf_vertex>
+  }
+`;
+
+const markerFragment = /* glsl */ `
+  uniform vec3 uColour;
+  out highp vec4 fragColour;
+  #define gl_FragColor fragColour
+  #include <common>
+  #include <logdepthbuf_pars_fragment>
+  void main() {
+    #include <logdepthbuf_fragment>
+    float r = length(gl_PointCoord - 0.5) * 2.0;
+    if (r > 1.0) discard;
+    // The selection marker: a core and a thin ring
+    gl_FragColor = vec4(uColour, (1.0 - smoothstep(0.26, 0.34, r)) + smoothstep(0.7, 0.76, r) * (1.0 - smoothstep(0.82, 0.88, r)));
+    #include <colorspace_fragment>
+  }
+`;
 
 export interface FollowHost {
   camera: PerspectiveCamera;
@@ -70,6 +68,9 @@ export interface FollowHost {
   /** Where the object is drawn at a sim time, scene units, or null if it isn't. */
   positionOf(slot: number, time: number, out: Vector3): Vector3 | null;
   hide(slot: number): void;
+  /** Keep this object's path continuous when new orbits arrive, or -1 for none. */
+  steady(slot: number): void;
+  pixelRatio(): number;
   suspendCamera(): void;
   resumeCamera(): void;
   restDistance(): number;
@@ -91,6 +92,25 @@ export function createFollow(host: FollowHost) {
   inertial.add(light, light.target, ambient);
   let station: Promise<Mesh | null> | null = null;
   let model: Mesh | null = null;
+  const markerSize = { value: 22 };
+  const marker = new Points(
+    new BufferGeometry().setAttribute('position', new BufferAttribute(new Float32Array(3), 3)),
+    new ShaderMaterial({
+      glslVersion: GLSL3,
+      vertexShader: markerVertex,
+      fragmentShader: markerFragment,
+      uniforms: { uColour: { value: new Color(getComputedStyle(document.documentElement).getPropertyValue('--flare').trim()) }, uSize: markerSize },
+      blending: AdditiveBlending,
+      transparent: true,
+      depthWrite: false,
+    }),
+  );
+  marker.matrixAutoUpdate = false;
+  marker.frustumCulled = false;
+  marker.renderOrder = 2;
+  // In the scene from the start, hidden, so its shader is compiled with the rest
+  marker.visible = false;
+  inertial.add(marker);
 
   type Phase = { kind: 'in' | 'riding'; start: number; from: Vector3; up: Vector3 } | { kind: 'out'; start: number; from: Vector3; target: Vector3 };
   let following: { slot: number; norad: number; phase: Phase } | null = null;
@@ -130,13 +150,19 @@ export function createFollow(host: FollowHost) {
       onEnd = ended;
       host.suspendCamera();
       following = { slot, norad, phase: { kind: 'in', start: now, from: camera.position.clone(), up: camera.up.clone() } };
+      host.hide(slot);
+      host.steady(slot);
+      marker.visible = true;
       if (norad === ISS) {
-        station ??= loadStation().catch(() => null);
+        // NASA's model loads on first use, with its own code
+        station ??= import('./station')
+          .then(({ loadStation }) => loadStation({ BufferAttribute, BufferGeometry, Color, Mesh, MeshStandardMaterial }))
+          .catch(() => null);
         void station.then((mesh) => {
           if (!mesh || following?.norad !== ISS) return;
           model = mesh;
           inertial.add(mesh);
-          host.hide(slot);
+          marker.visible = false;
         });
       }
     },
@@ -149,6 +175,11 @@ export function createFollow(host: FollowHost) {
       if (!following) return;
       const placed = frame(time);
       const phase = following.phase;
+      if (placed && marker.visible) {
+        marker.matrix.makeTranslation(p);
+        marker.matrixWorldNeedsUpdate = true;
+        markerSize.value = 22 * host.pixelRatio();
+      }
       const t = host.reducedMotion ? 1 : Math.min((now - phase.start) / ((phase.kind === 'out' ? FLY_OUT_S : FLY_IN_S) * 1000), 1);
       const e = smootherstep(t);
 
@@ -163,6 +194,8 @@ export function createFollow(host: FollowHost) {
         if (t >= 1 || !placed) {
           following = null;
           host.hide(-1);
+          host.steady(-1);
+          marker.visible = false;
           model?.removeFromParent();
           model = null;
           light.intensity = ambient.intensity = 0;
@@ -206,6 +239,9 @@ export function createFollow(host: FollowHost) {
       light.removeFromParent();
       ambient.removeFromParent();
       model?.removeFromParent();
+      marker.removeFromParent();
+      marker.geometry.dispose();
+      marker.material.dispose();
     },
   };
 }

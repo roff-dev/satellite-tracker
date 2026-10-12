@@ -157,6 +157,8 @@ export function startGlobe(host: HTMLElement, { onStatus, onSelection, onDescrib
     reducedMotion,
     positionOf: (slot, time, out) => satellites.positionOf(slot, time, out),
     hide: (slot) => satellites.setHidden(slot),
+    steady: (slot) => satellites.setSteady(slot),
+    pixelRatio: () => globe.pixelRatio,
     suspendCamera: () => globe.suspendCamera(),
     resumeCamera: () => globe.resumeCamera(),
     restDistance: () => globe.restDistance,

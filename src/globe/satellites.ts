@@ -171,6 +171,8 @@ const REVEAL_SECONDS = 4;
 const REVEAL_FROM_KM = 6371;
 const REVEAL_TO_KM = 52_000;
 const FRESH_SECONDS = 0.6;
+/** How long the followed object takes to ease from one orbit fit onto the next. */
+const STEADY_MS = 1200;
 /** Past every orbit: nothing is held back by the wave. */
 const REVEALED_KM = 1e9;
 
@@ -242,6 +244,28 @@ export function createSatellites(reducedMotion: boolean, trailDetail: QualitySet
   let anchorTime = 0;
   const teme = new Float64Array(3);
   let count = 0;
+
+  /** Where an object is at a sim time by one set of orbits, scene units; null if it has no orbit there. */
+  function place(el: Float32Array, anchor: number, slot: number, time: number, out: Vector3) {
+    if (slot < 0 || (slot + 1) * STRIDE > el.length || !(el[slot * STRIDE]! > 0)) return null;
+    keplerPosition(el, slot * STRIDE, (time - anchor) / 1000, teme);
+    return out.set(teme[0]! / 6371, teme[2]! / 6371, -teme[1]! / 6371);
+  }
+
+  // The followed object. Each new set of orbits is fitted afresh, and its fit can sit a few hundred metres from the
+  // last one: nothing at globe scale, but the follow camera, metres away, would lurch. The difference becomes an
+  // offset that fades out, so the path stays continuous, however often new orbits arrive.
+  let steady = -1;
+  let lastTime = 0;
+  const offset = new Vector3();
+  let offsetAt = -Infinity;
+  const before = new Vector3();
+  const after = new Vector3();
+  /** How much of the offset is left: all of it as new orbits arrive, none STEADY_MS later, eased out. */
+  function fading(now: number) {
+    const t = Math.min(Math.max((now - offsetAt) / STEADY_MS, 0), 1);
+    return 1 - t * t * (3 - 2 * t);
+  }
   let revealStart: number | null = null;
   let freshStart = reducedMotion ? Infinity : -Infinity;
   let started = false;
@@ -267,6 +291,12 @@ export function createSatellites(reducedMotion: boolean, trailDetail: QualitySet
     trailLines: trails.lines,
     setElements({ el, count: next, time }: ElementsMessage) {
       const attribute = geometry.getAttribute('position') as InterleavedBufferAttribute | undefined;
+      const outgoing = attribute?.data.array as Float32Array | undefined;
+      if (outgoing && place(outgoing, anchorTime, steady, lastTime, before) && place(el, time, steady, lastTime, after)) {
+        const now = performance.now();
+        offset.multiplyScalar(fading(now)).add(before).sub(after);
+        offsetAt = now;
+      }
       if (attribute && attribute.data.array.length === el.length) {
         attribute.data.array = el;
         attribute.data.needsUpdate = true;
@@ -290,6 +320,11 @@ export function createSatellites(reducedMotion: boolean, trailDetail: QualitySet
     },
     setHidden(slot: number) {
       uniforms.uHidden.value = slot;
+    },
+    /** Keep one object's path continuous as new orbits arrive (the one being followed), or -1 for none. */
+    setSteady(slot: number) {
+      steady = slot;
+      offset.set(0, 0, 0);
     },
     /** Draw only the selected object, or everything again. */
     setSolo(on: boolean) {
@@ -324,9 +359,8 @@ export function createSatellites(reducedMotion: boolean, trailDetail: QualitySet
     positionOf(slot: number, time: number, out: Vector3) {
       const attribute = geometry.getAttribute('position') as InterleavedBufferAttribute | undefined;
       const el = attribute?.data.array as Float32Array | undefined;
-      if (!el || slot < 0 || slot >= count || !(el[slot * STRIDE]! > 0)) return null;
-      keplerPosition(el, slot * STRIDE, (time - anchorTime) / 1000, teme);
-      return out.set(teme[0]! / 6371, teme[2]! / 6371, -teme[1]! / 6371);
+      if (!el || slot >= count || !place(el, anchorTime, slot, time, out)) return null;
+      return slot === steady ? out.addScaledVector(offset, fading(performance.now())) : out;
     },
     /** Lets the loading wave begin; it waits for the first objects if they aren't here yet. */
     start() {
@@ -335,6 +369,7 @@ export function createSatellites(reducedMotion: boolean, trailDetail: QualitySet
     /** Speed is sim time per real time, signed; trails show at 60× and faster. */
     update(time: number, sun: Vector3, pixelRatio: number, glowScale: number, speed = 1, detail = { samples: 8, payloadsOnly: false }) {
       const real = performance.now();
+      lastTime = time;
       const target = Math.abs(speed) >= 60 ? 1 : 0;
       // Trails fade in and out over 400 ms, or switch straight over without motion
       trailStrength = reducedMotion ? target : Math.min(1, Math.max(0, trailStrength + Math.sign(target - trailStrength) * ((real - lastUpdate) / 400)));
